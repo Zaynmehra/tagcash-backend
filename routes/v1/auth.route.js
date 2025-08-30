@@ -80,6 +80,14 @@ router.post("/listCustomer", checkApiKey, checkToken, decryption, validateJoi(Jo
   isLocked: Joi.boolean().allow(null, '').optional(),
 })), authController.list_customer);
 
+router.post("/listCustomerTransactions", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  page: Joi.number().allow(null, '').optional(),
+  limit: Joi.number().allow(null, '').optional(),
+  search: Joi.string().allow(null, '').optional(),
+  isActive: Joi.boolean().allow(null, '').optional(),
+  isLocked: Joi.boolean().allow(null, '').optional(),
+})), authController.get_customer_bills);
+
 router.post("/getCustomerById", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
   userId: Joi.string().required(),
 })), authController.get_customer_by_id);

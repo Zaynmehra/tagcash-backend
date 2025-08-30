@@ -1,5 +1,5 @@
 module.exports = {
-    'APP_NAME': `TagCash MVP`,
+    'APP_NAME': `Team Tagcash`,
     'USER_IMAGE_PATH': process.env.AWS_S3_PATH + 'user/',
     'ENCRYPTION_BYPASS': true,
     'SSL': false,

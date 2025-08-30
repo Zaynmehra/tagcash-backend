@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const { DEVICE_TYPES } = require('../../config/constants');
 
 const brandSchema = new mongoose.Schema({
-  // Basic Brand Information
   brandname: {
     type: String,
     required: [true, 'Brand name is required'],
@@ -44,18 +43,30 @@ const brandSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  instaId: {
+    type: String,
+    trim: true
+  },
+
   website: {
     type: String,
     trim: true,
     match: [/^https?:\/\/.+/, 'Please enter a valid website URL']
   },
+
   about: {
     type: String,
-    trim: true,
-    maxlength: 2000
+    trim: true
   },
-  
-  address: {
+
+
+
+  address: [{
+    chainName: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    },
     street: {
       type: String,
       trim: true,
@@ -86,7 +97,7 @@ const brandSchema = new mongoose.Schema({
       trim: true,
       maxlength: 500
     }
-  },
+  }],
   location: {
     lat: {
       type: String,
@@ -102,58 +113,55 @@ const brandSchema = new mongoose.Schema({
   subcategory: {
     type: String
   },
-  
+
   rateOfTwo: {
     type: Number,
     min: 0,
     description: 'Average charges for two persons'
   },
+
   paymentType: {
     type: String,
-    enum: ['Escrow', 'Prepaid']
+    enum: ['Escrow', 'Prepaid'],
+    default: 'Escrow',
   },
-  
-  // Must Try Items
+
+  balance: {
+    type: Number,
+    default: 0,
+  },
+
+  totalAddedBalance: {
+    type: Number,
+    default: 0,
+  },
+
   mustTryItems: [{
     name: {
       type: String,
       trim: true,
       maxlength: 200
     },
-    link: {
-      type: String,
-      trim: true
-    },
-    image: {
-      type: String,
-      trim: true
-    },
-    price: {
-      type: Number,
-      min: 0
-    },
-    description: {
-      type: String,
-      trim: true,
-      maxlength: 500
-    }
   }],
-  
-  // Brand Guidelines
+
   brandGuidelines: [{
     type: String,
     trim: true,
-    maxlength: 500
+    maxlength: 500,
+    default: [
+      "Tag @brand and use #brand in your posts.",
+      "Ensure the brand logo is visible in your content.",
+      "Content must be original and not previously published.",
+      "Maintain a positive and respectful tone when mentioning the brand."
+    ]
   }],
-  
-  // Influencer Requirements
+
   minimumFollowers: {
     type: Number,
     min: 0,
     default: 0
   },
-  
-  // Policies
+
   viewAndRefund: {
     policy: {
       type: String,
@@ -169,7 +177,20 @@ const brandSchema = new mongoose.Schema({
       type: Number,
       min: 0,
       default: 7
-    }
+    },
+    upToRefundAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+      description: 'Maximum refund amount brand is willing to cover'
+    },
+
+    minimumViews: {
+      type: Number,
+      min: 0,
+      default: 0,
+      description: 'Minimum views required on influencer posts'
+    },
   },
   procedure: {
     type: String,
@@ -177,8 +198,6 @@ const brandSchema = new mongoose.Schema({
     maxlength: 2000,
     description: 'Brand collaboration procedure'
   },
-  
-  // Challenges/Events
   tryThisOut: [{
     title: {
       type: String,
@@ -217,8 +236,25 @@ const brandSchema = new mongoose.Schema({
       trim: true
     }]
   }],
-  
-  // Media Assets
+
+  reviews: [{
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5
+    },
+    reviewBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'customers',
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
   carouselImages: {
     desktop: [{
       url: {
@@ -260,8 +296,6 @@ const brandSchema = new mongoose.Schema({
       default: 'general'
     }
   }],
-  
-  // Status Fields
   isActive: {
     type: Boolean,
     default: true
@@ -294,8 +328,6 @@ const brandSchema = new mongoose.Schema({
     type: String,
     select: false
   },
-  
-  // Device Information
   deviceName: {
     type: String,
     trim: true
@@ -312,8 +344,6 @@ const brandSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  
-  // Analytics & Performance
   totalCampaigns: {
     type: Number,
     default: 0
@@ -326,7 +356,7 @@ const brandSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     max: 5,
-    default: 0
+    default: 1
   },
   totalReviews: {
     type: Number,
@@ -336,6 +366,25 @@ const brandSchema = new mongoose.Schema({
   timestamps: true
 });
 
+brandSchema.methods.calculateAvgRating = function () {
+  if (this.reviews && this.reviews.length > 0) {
+    const totalRating = this.reviews.reduce((sum, review) => sum + review.rating, 0);
+    this.averageRating = parseFloat((totalRating / this.reviews.length).toFixed(1));
+    this.totalReviews = this.reviews.length;
+  } else {
+    this.averageRating = 1;
+    this.totalReviews = 0;
+  }
+  return this.averageRating;
+};
 
+brandSchema.statics.updateAvgRating = async function (brandId) {
+  const brand = await this.findById(brandId);
+  if (brand) {
+    brand.calculateAvgRating();
+    await brand.save();
+  }
+  return brand;
+};
 
-module.exports = mongoose.model('Brand', brandSchema);
+module.exports = mongoose.model('newBrand', brandSchema);

@@ -1,6 +1,5 @@
 const Challenge = require('../../models/v1/Challenge');
 const { sendResponse } = require('../../middleware');
-const { USER_IMAGE_PATH } = require('../../config/constants');
 
 let challenge_controller = {
     add_challenges: async (req, res) => {
@@ -52,7 +51,7 @@ let challenge_controller = {
 
             const challengesWithImages = challenges.map(challenge => ({
                 ...challenge.toJSON(),
-                challengesimage: challenge.challengesimage ? USER_IMAGE_PATH + challenge.challengesimage : USER_IMAGE_PATH + 'default.png'
+                challengesimage: challenge.challengesimage
             }));
 
             const response = {

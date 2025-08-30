@@ -1,9 +1,7 @@
 const Admin = require('../../models/v1/Admin');
 const { sendResponse } = require('../../middleware');
-const common = require('../../utils/common');
 const cryptoLib = require('cryptlib');
 const shaKey = cryptoLib.getHashSha256(process.env.PASSWORD_ENC_KEY, 32);
-const { USER_IMAGE_PATH } = require('../../config/constants');
 
 let admin_controller = {
     create_admin: async (req, res) => {
@@ -71,7 +69,7 @@ let admin_controller = {
                     id: admin._id,
                     name: admin.name,
                     email: admin.email,
-                    profileImage: admin.profileImage ? USER_IMAGE_PATH + admin.profileImage : USER_IMAGE_PATH + 'default.png',
+                    profileImage: admin.profileImage,
                     isActive: admin.isActive,
                     isLocked: admin.isLocked,
                     isVerified: admin.isVerified,
@@ -107,8 +105,7 @@ let admin_controller = {
                 id: admin._id,
                 name: admin.name,
                 email: admin.email,
-                profileImage: admin.profileImage ? USER_IMAGE_PATH + admin.profileImage : USER_IMAGE_PATH + 'default.png',
-                isActive: admin.isActive,
+                profileImage: admin.profileImage,
                 isLocked: admin.isLocked,
                 isVerified: admin.isVerified,
                 role: admin.role,

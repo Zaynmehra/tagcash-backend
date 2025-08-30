@@ -1,24 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const { checkApiKey, decryption, validateJoi, checkToken, checkTokenBrand } = require('../../middleware');
+const { checkApiKey, decryption, validateJoi, checkToken, checkTokenBrand, checkTokenCustomer } = require('../../middleware');
 const brandController = require('../../controllers/v1/brandController');
 const Joi = require('joi');
-const AWS = require('aws-sdk');
-const multer = require('multer');
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, 
-    files: 20
-  }
-});
+  const AWS = require('aws-sdk');
+  const multer = require('multer');
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 10 * 1024 * 1024, 
+      files: 20
+    }
+  });
 
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
+  const s3 = new AWS.S3({
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+  });
 
 router.post("/registerBrand", checkApiKey, decryption, validateJoi(Joi.object({
   brandname: Joi.string().required(),
@@ -26,6 +26,7 @@ router.post("/registerBrand", checkApiKey, decryption, validateJoi(Joi.object({
   password: Joi.string().required(),
   phone: Joi.string().required(),
   managername: Joi.string().required(),
+  instaId: Joi.string().optional(),
   brandurl: Joi.string().optional(),
 })), brandController.register_brand);
 
@@ -72,11 +73,18 @@ router.post("/listBrand", checkApiKey, checkToken, decryption, validateJoi(Joi.o
   isActive: Joi.boolean().allow(null, '').optional(),
 })), brandController.list_brand);
 
+router.post("/listBrandTransactions", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  page: Joi.number().allow(null, '').optional(),
+  limit: Joi.number().allow(null, '').optional(),
+  search: Joi.string().allow(null, '').optional(),
+  isActive: Joi.boolean().allow(null, '').optional(),
+})), brandController.get_brand_bills);
+
 router.post("/getBrandById", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
   brandId: Joi.string().required(),
 })), brandController.get_brand_by_id);
 
-router.post("/addBrand", checkApiKey, checkToken, upload.single('brandlogo'), async (req, res, next) => {
+router.post("/addBrand", checkApiKey, checkTokenBrand, upload.single('brandlogo'), async (req, res, next) => {
     try {
       let imageUrl;
       if (req.file) {
@@ -89,7 +97,7 @@ router.post("/addBrand", checkApiKey, checkToken, upload.single('brandlogo'), as
         };
         const uploadResult = await s3.upload(params).promise();
         imageUrl = uploadResult.Location;
-        var imagename = imageUrl.split('/').pop();
+        var imagename = imageUrl;
         req.body.brandlogo = imagename;
       }
       next();
@@ -107,9 +115,7 @@ router.post("/addBrand", checkApiKey, checkToken, upload.single('brandlogo'), as
     subcategory: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
   })), brandController.add_brand);
 
-router.post("/updateBrandAdmin", 
-  checkApiKey, 
-  checkToken,
+router.post("/updateBrand", checkApiKey, checkTokenBrand,
   upload.fields([
     { name: 'brandlogo', maxCount: 1 },
     { name: 'carouselDesktop', maxCount: 10 },
@@ -124,50 +130,46 @@ router.post("/updateBrandAdmin",
         const file = req.files.brandlogo[0];
         const params = {
           Bucket: process.env.AWS_BUCKET_NAME,
-          Key: `TagCashMVP/brand/logo/${Date.now()}_${file.originalname}`,
+          Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
           Body: file.buffer,
           ContentType: file.mimetype,
           ACL: 'public-read'
         };
         const uploadResult = await s3.upload(params).promise();
-        req.body.brandlogo = uploadResult.Location.split('/').pop();
+        req.body.brandlogo = uploadResult.Location
       }
-
-      // Handle carousel desktop images
       if (req.files && req.files.carouselDesktop) {
         const carouselDesktop = [];
         for (const file of req.files.carouselDesktop) {
           const params = {
             Bucket: process.env.AWS_BUCKET_NAME,
-            Key: `TagCashMVP/brand/carousel/desktop/${Date.now()}_${file.originalname}`,
+            Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
             Body: file.buffer,
             ContentType: file.mimetype,
             ACL: 'public-read'
           };
           const uploadResult = await s3.upload(params).promise();
           carouselDesktop.push({
-            url: uploadResult.Location.split('/').pop(),
+            url: uploadResult.Location,
             alt: req.body[`carouselDesktopAlt_${carouselDesktop.length}`] || ''
           });
         }
         if (!req.body.carouselImages) req.body.carouselImages = {};
         req.body.carouselImages.desktop = carouselDesktop;
       }
-
-      // Handle carousel mobile images
       if (req.files && req.files.carouselMobile) {
         const carouselMobile = [];
         for (const file of req.files.carouselMobile) {
           const params = {
             Bucket: process.env.AWS_BUCKET_NAME,
-            Key: `TagCashMVP/brand/carousel/mobile/${Date.now()}_${file.originalname}`,
+            Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
             Body: file.buffer,
             ContentType: file.mimetype,
             ACL: 'public-read'
           };
           const uploadResult = await s3.upload(params).promise();
           carouselMobile.push({
-            url: uploadResult.Location.split('/').pop(),
+            url: uploadResult.Location,
             alt: req.body[`carouselMobileAlt_${carouselMobile.length}`] || ''
           });
         }
@@ -180,14 +182,14 @@ router.post("/updateBrandAdmin",
           const file = req.files.posterImages[i];
           const params = {
             Bucket: process.env.AWS_BUCKET_NAME,
-            Key: `TagCashMVP/brand/posters/${Date.now()}_${file.originalname}`,
+            Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
             Body: file.buffer,
             ContentType: file.mimetype,
             ACL: 'public-read'
           };
           const uploadResult = await s3.upload(params).promise();
           posterImages.push({
-            url: uploadResult.Location.split('/').pop(),
+            url: uploadResult.Location,
             title: req.body[`posterTitle_${i}`] || '',
             type: req.body[`posterType_${i}`] || 'general'
           });
@@ -196,52 +198,64 @@ router.post("/updateBrandAdmin",
       }
       if (req.files && req.files.mustTryItemImages) {
         const mustTryItems = JSON.parse(req.body.mustTryItems || '[]');
-        let imageIndex = 0;
-        
+        const uploadedImageUrls = [];
+        for (const file of req.files.mustTryItemImages) {
+          const params = {
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
+            Body: file.buffer,
+            ContentType: file.mimetype,
+            ACL: 'public-read'
+          };
+          const uploadResult = await s3.upload(params).promise();
+          uploadedImageUrls.push(uploadResult.Location);
+        }
+        let imageUrlIndex = 0;
         for (let i = 0; i < mustTryItems.length; i++) {
-          if (req.files.mustTryItemImages[imageIndex]) {
-            const file = req.files.mustTryItemImages[imageIndex];
-            const params = {
-              Bucket: process.env.AWS_BUCKET_NAME,
-              Key: `TagCashMVP/brand/musttry/${Date.now()}_${file.originalname}`,
-              Body: file.buffer,
-              ContentType: file.mimetype,
-              ACL: 'public-read'
-            };
-            const uploadResult = await s3.upload(params).promise();
-            mustTryItems[i].image = uploadResult.Location.split('/').pop();
-            imageIndex++;
+          if (imageUrlIndex < uploadedImageUrls.length) {
+            mustTryItems[i].image = uploadedImageUrls[imageUrlIndex];
+            imageUrlIndex++;
           }
         }
+        
         req.body.mustTryItems = mustTryItems;
       }
+
       if (req.files && req.files.tryThisOutImages) {
         const tryThisOut = JSON.parse(req.body.tryThisOut || '[]');
-        let imageIndex = 0;
         
+        const uploadedImageUrls = [];
+        for (const file of req.files.tryThisOutImages) {
+          const params = {
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: `TagCashMVP/user/${Date.now()}_${file.originalname}`,
+            Body: file.buffer,
+            ContentType: file.mimetype,
+            ACL: 'public-read'
+          };
+          const uploadResult = await s3.upload(params).promise();
+          uploadedImageUrls.push(uploadResult.Location);
+        }
+      
+        let imageUrlIndex = 0;
         for (let i = 0; i < tryThisOut.length; i++) {
-          const itemImages = [];
           const imageCount = parseInt(req.body[`tryThisOutImageCount_${i}`] || '0');
           
-          for (let j = 0; j < imageCount; j++) {
-            if (req.files.tryThisOutImages[imageIndex]) {
-              const file = req.files.tryThisOutImages[imageIndex];
-              const params = {
-                Bucket: process.env.AWS_BUCKET_NAME,
-                Key: `TagCashMVP/brand/trythisout/${Date.now()}_${file.originalname}`,
-                Body: file.buffer,
-                ContentType: file.mimetype,
-                ACL: 'public-read'
-              };
-              const uploadResult = await s3.upload(params).promise();
-              itemImages.push(uploadResult.Location.split('/').pop());
-              imageIndex++;
+          if (imageCount > 0 && imageUrlIndex < uploadedImageUrls.length) {
+            const itemImages = [];
+            
+            // Assign the specified number of images to this item
+            for (let j = 0; j < imageCount && imageUrlIndex < uploadedImageUrls.length; j++) {
+              itemImages.push(uploadedImageUrls[imageUrlIndex]);
+              imageUrlIndex++;
+            }
+            
+            if (itemImages.length > 0) {
+              tryThisOut[i].images = itemImages;
             }
           }
-          if (itemImages.length > 0) {
-            tryThisOut[i].images = itemImages;
-          }
         }
+        
         req.body.tryThisOut = tryThisOut;
       }
 
@@ -250,131 +264,67 @@ router.post("/updateBrandAdmin",
       console.error('Image upload error:', error);
       return res.status(500).json({ code: 0, message: 'Failed to upload images' });
     }
-  }, 
+  },
   decryption, 
-  validateJoi(Joi.object({
-    brandId: Joi.string().required(),
-    brandname: Joi.string().optional(),
-    managername: Joi.string().optional(),
-    phone: Joi.string().optional(),
-    email: Joi.string().email().optional(),
-    brandlogo: Joi.string().optional(),
-    brandurl: Joi.string().optional(),
-    website: Joi.string().optional(),
-    about: Joi.string().max(2000).optional(),
-    address: Joi.object({
-      street: Joi.string().max(200).optional(),
-      city: Joi.string().max(100).optional(),
-      state: Joi.string().max(100).optional(),
-      country: Joi.string().max(100).optional(),
-      zipCode: Joi.string().max(20).optional(),
-      fullAddress: Joi.string().max(500).optional()
-    }).optional(),
-    location: Joi.object({
-      lat: Joi.string().optional(),
-      lon: Joi.string().optional()
-    }).optional(),
-    category: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
-    subcategory: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
-    rateOfTwo: Joi.number().min(0).optional(),
-    paymentType: Joi.string().valid('Escrow', 'Prepaid').optional(),
-    mustTryItems: Joi.array().items(Joi.object({
-      name: Joi.string().max(200).optional(),
-      link: Joi.string().optional(),
-      image: Joi.string().optional(),
-      price: Joi.number().min(0).optional(),
-      description: Joi.string().max(500).optional()
-    })).optional(),
-    brandGuidelines: Joi.array().items(Joi.string().max(500)).optional(),
-    minimumFollowers: Joi.number().min(0).optional(),
-    viewAndRefund: Joi.object({
-      policy: Joi.string().max(1000).optional(),
-      refundPercentage: Joi.number().min(0).max(100).optional(),
-      refundDays: Joi.number().min(0).optional()
-    }).optional(),
-    procedure: Joi.string().max(2000).optional(),
-    tryThisOut: Joi.array().items(Joi.object({
-      title: Joi.string().max(200).optional(),
-      images: Joi.array().items(Joi.string()).optional(),
-      link: Joi.string().optional(),
-      about: Joi.string().max(1000).optional(),
-      startDate: Joi.date().optional(),
-      endDate: Joi.date().optional(),
-      isActive: Joi.boolean().optional(),
-      reward: Joi.number().min(0).optional(),
-      requirements: Joi.array().items(Joi.string()).optional()
-    })).optional(),
-    carouselImages: Joi.object({
-      desktop: Joi.array().items(Joi.object({
-        url: Joi.string().optional(),
-        alt: Joi.string().max(200).optional()
-      })).optional(),
-      mobile: Joi.array().items(Joi.object({
-        url: Joi.string().optional(),
-        alt: Joi.string().max(200).optional()
-      })).optional()
-    }).optional(),
-    
-    posterImages: Joi.array().items(Joi.object({
-      url: Joi.string().optional(),
-      title: Joi.string().max(200).optional(),
-      type: Joi.string().valid('promotion', 'event', 'product', 'general').optional()
-    })).optional(),
-    isActive: Joi.boolean().optional(),
-    isLocked: Joi.boolean().optional(),
-    isDeleted: Joi.boolean().optional(),
-    isVerified: Joi.boolean().optional(),
-    archive: Joi.boolean().optional(),
-    deviceName: Joi.string().optional(),
-    deviceType: Joi.string().optional(),
-    deviceToken: Joi.string().optional(),
-    totalCampaigns: Joi.number().min(0).optional(),
-    totalInfluencers: Joi.number().min(0).optional(),
-    averageRating: Joi.number().min(0).max(5).optional(),
-    totalReviews: Joi.number().min(0).optional(),
-    carouselDesktopAlt_0: Joi.string().optional(),
-    carouselDesktopAlt_1: Joi.string().optional(),
-    carouselDesktopAlt_2: Joi.string().optional(),
-    carouselDesktopAlt_3: Joi.string().optional(),
-    carouselDesktopAlt_4: Joi.string().optional(),
-    carouselMobileAlt_0: Joi.string().optional(),
-    carouselMobileAlt_1: Joi.string().optional(),
-    carouselMobileAlt_2: Joi.string().optional(),
-    carouselMobileAlt_3: Joi.string().optional(),
-    carouselMobileAlt_4: Joi.string().optional(),
-    posterTitle_0: Joi.string().optional(),
-    posterTitle_1: Joi.string().optional(),
-    posterTitle_2: Joi.string().optional(),
-    posterTitle_3: Joi.string().optional(),
-    posterTitle_4: Joi.string().optional(),
-    posterType_0: Joi.string().valid('promotion', 'event', 'product', 'general').optional(),
-    posterType_1: Joi.string().valid('promotion', 'event', 'product', 'general').optional(),
-    posterType_2: Joi.string().valid('promotion', 'event', 'product', 'general').optional(),
-    posterType_3: Joi.string().valid('promotion', 'event', 'product', 'general').optional(),
-    posterType_4: Joi.string().valid('promotion', 'event', 'product', 'general').optional(),
-    tryThisOutImageCount_0: Joi.string().optional(),
-    tryThisOutImageCount_1: Joi.string().optional(),
-    tryThisOutImageCount_2: Joi.string().optional(),
-    tryThisOutImageCount_3: Joi.string().optional(),
-    tryThisOutImageCount_4: Joi.string().optional()
-  })), 
   brandController.update_brand
 );
 
 
-router.post("/deleteBrand", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/deleteBrand", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   brandId: Joi.string().required(),
 })), brandController.delete_brand);
 
-router.post("/dashboardBrand", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
-  brandId: Joi.string().required(),
-  startDate: Joi.string().allow(null, '').optional(),
-  endDate: Joi.string().allow(null, '').optional(),
-})), brandController.dashboard_brand);
+router.get("/dashboardBrand", checkApiKey, checkTokenBrand, decryption, brandController.dashboard_brand);
 
 router.post("/archiveBrand", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
-  brandId: Joi.string().required(),
   archive: Joi.boolean().required(),
 })), brandController.archive_brand);
+
+router.post("/addBalance", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  amount: Joi.number().required(),
+})), brandController.add_balance);
+
+router.post("/verifyPayment", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  razorpay_order_id: Joi.string().required(),
+  razorpay_payment_id: Joi.string().required(),
+  razorpay_signature: Joi.string().required(),
+})), brandController.verify_payment);
+
+router.post("/customersList", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  page: Joi.number().min(1).optional(),
+  limit: Joi.number().min(1).max(100).optional()
+})), brandController.get_brand_customers);
+
+router.post("/customersVerify", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  customerId: Joi.string().required()
+})), brandController.verify_brand_customer);
+
+router.post("/customersUnVerify", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  customerId: Joi.string().required()
+})), brandController.unverify_brand_customer);
+
+router.post("/customersDetails", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  customerId: Joi.string().required()
+})), brandController.get_brand_customer_details);
+
+router.post("/customersSearch", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  searchTerm: Joi.string().min(2).required(),
+  page: Joi.number().min(1).optional(),
+  limit: Joi.number().min(1).max(50).optional()
+})), brandController.search_customers_for_brand);
+
+router.post("/customers/export", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  format: Joi.string().valid('json', 'csv').optional(),
+  isVerified: Joi.boolean().optional()
+})), brandController.export_brand_customers);
+
+router.post("/getBrandCustomerBills", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  customerId: Joi.string().required(),
+  page: Joi.number().min(1).optional(),
+  limit: Joi.number().min(1).max(100).optional(),
+})), brandController.get_brand_customer_bills);
+
+
+router.get("/getVerifiedBrand", checkApiKey, checkTokenCustomer, decryption, brandController.get_verified_brand);
 
 module.exports = router;

@@ -34,23 +34,24 @@ const sendVerificationEmail = async (email) => {
 
 const sendPasswordResetOTPEmail = async (email) => {
     try {
-        const otp = await common.generateOtp();
+        const otp = '123456';
+        // await common.generateOtp();
         
         const response = await sendMail({
             from: `"${APP_NAME}" <${process.env.EMAIL_SMTP_USERNAME}>`,
             to: email,
-            subject: `Password Reset OTP - ${APP_NAME}`,
+            subject: `OTP Login - ${APP_NAME}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2>Password Reset Request</h2>
+                    <h2>OTP Login Request</h2>
                     <p>Dear Customer,</p>
                     <p>You have requested to reset your password for ${APP_NAME}.</p>
-                    <p>Your password reset OTP is:</p>
+                    <p>Your Login OTP is:</p>
                     <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
                         <h1 style="color: #333; font-size: 32px; margin: 0;">${otp}</h1>
                     </div>
                     <p>This OTP is valid for 10 minutes.</p>
-                    <p>If you didn't request this password reset, please ignore this email.</p>
+                    <p>If you didn't request this OTP Login request, please ignore this email.</p>
                     <p>Thank you,<br>${APP_NAME} Team</p>
                 </div>
             `

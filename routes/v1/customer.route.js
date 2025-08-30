@@ -5,19 +5,6 @@ const customerController = require('../../controllers/v1/customerController');
 const { checkApiKey, decryption, validateJoi, checkTokenCustomer } = require('../../middleware');
 const Joi = require('joi');
 
-const signUpValidation = [
-    body('name').notEmpty().withMessage('Name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('instaId').notEmpty().withMessage('Instagram ID is required'),
-    body('deviceType').isIn(['A', 'I', 'W']).withMessage('Valid device type is required')
-];
-
-const loginValidation = [
-    body('emailOrPhone').notEmpty().withMessage('Email or phone is required'),
-    body('password').notEmpty().withMessage('Password is required'),
-    body('deviceType').isIn(['A', 'I', 'W']).withMessage('Valid device type is required')
-];
 
 router.post('/signup', 
     checkApiKey, 
@@ -57,7 +44,7 @@ router.post('/google-signup',
         upiId: Joi.string().optional(),
         phone: Joi.string().required(),
         deviceName: Joi.string().optional(),
-        deviceType: Joi.string().valid('A', 'I', 'W').optional(),
+        deviceType: Joi.string().valid('A', 'I', 'W', 'M').optional(),
         deviceToken: Joi.string().optional()
     })),
     customerController.googleSignUp
@@ -69,7 +56,7 @@ router.post('/google-login',
     validateJoi(Joi.object({
         idToken: Joi.string().required(),
         deviceName: Joi.string().optional(),
-        deviceType: Joi.string().valid('A', 'I', 'W').optional(),
+        deviceType: Joi.string().valid('A', 'I', 'W', "M").optional(),
         deviceToken: Joi.string().optional()
     })),
     customerController.googleLogin

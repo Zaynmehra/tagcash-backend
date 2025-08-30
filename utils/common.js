@@ -5,7 +5,6 @@ const jwt = require('jsonwebtoken');
 const Admin = require('../models/v1/Admin');
 const Brand = require('../models/v1/Brand');
 const Customer = require('../models/v1/Customer');
-const { USER_IMAGE_PATH } = require('../config/constants');
 const request = require('request');
 
 const common = {
@@ -37,9 +36,6 @@ const common = {
             if (!admin_details) {
                 throw new Error("user_not_found");
             }
-            admin_details.profileImage = (admin_details.profileImage && admin_details.profileImage !== '') 
-                ? USER_IMAGE_PATH + admin_details.profileImage 
-                : USER_IMAGE_PATH + 'default.png';
             return { admin_details };
         } catch (e) {
             throw new Error("user_not_found");
@@ -52,9 +48,6 @@ const common = {
             if (!admin_details) {
                 throw new Error("user_not_found");
             }
-            admin_details.brandlogo = (admin_details.brandlogo && admin_details.brandlogo !== '') 
-                ? USER_IMAGE_PATH + admin_details.brandlogo 
-                : USER_IMAGE_PATH + 'default.png';
             return { admin_details };
         } catch (e) {
             throw new Error("user_not_found");
@@ -67,9 +60,6 @@ const common = {
             if (!customer_details) {
                 throw new Error("user_not_found");
             }
-            customer_details.profileImage = (customer_details.profileImage && customer_details.profileImage !== '') 
-                ? USER_IMAGE_PATH + customer_details.profileImage 
-                : USER_IMAGE_PATH + 'default.png';
             return { customer_details };
         } catch (e) {
             throw new Error("user_not_found");

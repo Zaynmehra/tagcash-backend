@@ -1,11 +1,12 @@
 const Admin = require('../../models/v1/Admin');
 const Customer = require('../../models/v1/Customer');
+const Bill = require('../../models/v1/Bill');
 const { sendResponse } = require('../../middleware');
 const common = require('../../utils/common');
 const moment = require('moment');
 const cryptoLib = require('cryptlib');
 const shaKey = cryptoLib.getHashSha256(process.env.PASSWORD_ENC_KEY, 32);
-const { USER_IMAGE_PATH, APP_NAME } = require('../../config/constants');
+const { APP_NAME } = require('../../config/constants');
 const { sendMail } = require('../../utils/configEmailSMTP');
 
 let auth_controller = {
@@ -31,8 +32,6 @@ let auth_controller = {
                 return sendResponse(req, res, 200, 0, { keyword: "account_locked", components: {} });
             }
 
-            profileImage = (profileImage && profileImage != '') ? USER_IMAGE_PATH + profileImage : USER_IMAGE_PATH + 'default.png';
-
             let enPassword = cryptoLib.encrypt(password, shaKey, process.env.PASSWORD_ENC_IV);
 
             if (storedPassword === enPassword) {
@@ -50,7 +49,7 @@ let auth_controller = {
 
                 adminDetails = await common.admin_details(_id);
 
-                console.log({adminDetails})
+                console.log({ adminDetails })
 
                 return sendResponse(req, res, 200, 1, { keyword: "login_success", components: {} }, adminDetails);
             } else {
@@ -108,11 +107,7 @@ let auth_controller = {
     user_details: async (req, res) => {
         try {
             let { admin_id } = req.loginUser;
-
             let user = await Admin.findById(admin_id);
-
-            user.profileImage = (user.profileImage && user.profileImage != '') ? USER_IMAGE_PATH + user.profileImage : USER_IMAGE_PATH + 'default.png';
-
             return sendResponse(req, res, 200, 1, { keyword: "success" }, user);
         } catch (err) {
             return sendResponse(req, res, 200, 0, { keyword: err.message || "failed_to_fetch" });
@@ -169,7 +164,7 @@ let auth_controller = {
                     `
                 });
 
-                await Admin.findByIdAndUpdate(user._id, { 
+                await Admin.findByIdAndUpdate(user._id, {
                     otp: otp,
                     otpExpires: new Date(Date.now() + 10 * 60 * 1000)
                 });
@@ -240,10 +235,8 @@ let auth_controller = {
     list_customer: async (req, res) => {
         const { page = 1, limit = 10, search, isActive, isLocked } = req.body;
         const skip = (page - 1) * limit;
-
         try {
             let query = { isDeleted: false };
-
             if (search) {
                 query.$or = [
                     { name: { $regex: search, $options: 'i' } },
@@ -262,6 +255,22 @@ let auth_controller = {
                 .sort({ createdAt: -1 });
 
             const totalCount = await Customer.countDocuments(query);
+            const customerIds = customers.map(customer => customer._id);
+            const lastBills = await Bill.aggregate([
+                { $match: { customerId: { $in: customerIds } } },
+                { $sort: { customerId: 1, createdAt: -1 } },
+                {
+                    $group: {
+                        _id: '$customerId',
+                        lastBillId: { $first: '$_id' }
+                    }
+                }
+            ]);
+            const billMap = new Map();
+            lastBills.forEach(bill => {
+                billMap.set(bill._id.toString(), bill.lastBillId);
+            });
+
             const totalPages = Math.ceil(totalCount / limit);
             const response = {
                 totalCount,
@@ -272,15 +281,16 @@ let auth_controller = {
                     name: customer.name,
                     phone: customer.phone,
                     email: customer.email,
-                    profileImage: customer.profileImage ? USER_IMAGE_PATH + customer.profileImage : USER_IMAGE_PATH + 'default.png',
+                    profileImage: customer.profileImage,
                     instaId: customer.instaId,
-                    instaDetails : customer.instaDetails,
+                    instaDetails: customer.instaDetails,
                     upiId: customer.upiId,
                     category: customer.category,
                     isVerified: customer.isVerified,
                     isActive: customer.isActive,
                     isLocked: customer.isLocked,
                     lastActive: customer.lastActive,
+                    lastBillId: billMap.get(customer._id.toString()) || null,
                     createdAt: customer.createdAt,
                     updatedAt: customer.updatedAt
                 }))
@@ -290,6 +300,59 @@ let auth_controller = {
         } catch (err) {
             console.error("Error fetching customers:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+        }
+    },
+
+    get_customer_bills: async (req, res) => {
+        const { page = 1, limit = 10, startDate, endDate, status, customerId } = req.body;
+        try {
+            if (!customerId) {
+                return sendResponse(req, res, 400, 0, { keyword: "customer_id_required" });
+            }
+            const customer = await Customer.findOne({ _id: customerId, isDeleted: false });
+            if (!customer) {
+                return sendResponse(req, res, 404, 0, { keyword: "customer_not_found" });
+            }
+            const skip = (page - 1) * limit;
+            let query = { customerId: customerId };
+            if (startDate || endDate) {
+                query.createdAt = {};
+                if (startDate) query.createdAt.$gte = new Date(startDate);
+                if (endDate) query.createdAt.$lte = new Date(endDate);
+            }
+            if (status) {
+                query.status = status;
+            }
+            
+            const bills = await Bill.find(query)
+                .skip(skip)
+                .limit(parseInt(limit))
+                .sort({ createdAt: -1 })
+
+            const totalCount = await Bill.countDocuments(query);
+            const totalPages = Math.ceil(totalCount / limit);
+
+            const response = {
+                customer: {
+                    id: customer._id,
+                    name: customer.name,
+                    email: customer.email,
+                    phone: customer.phone
+                },
+                bills: bills,
+                pagination: {
+                    totalCount,
+                    totalPages,
+                    currentPage: parseInt(page),
+                    limit: parseInt(limit)
+                }
+            };
+
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+
+        } catch (err) {
+            console.error("Error fetching customer bills:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_bills" });
         }
     },
 
@@ -313,7 +376,7 @@ let auth_controller = {
                 email: customer.email,
                 profileImage: customer.profileImage,
                 instaId: customer.instaId,
-                instaDetails : customer.instaDetails,
+                instaDetails: customer.instaDetails,
                 upiId: customer.upiId,
                 category: customer.category,
                 isVerified: customer.isVerified,
@@ -383,8 +446,6 @@ let auth_controller = {
                 isLocked: false,
                 ...dateQuery
             });
-
-            const Bill = require('../../models/v1/Bill');
             const totalBills = await Bill.countDocuments({
                 isDeleted: false,
                 ...dateQuery

@@ -3,15 +3,6 @@ const router = express.Router();
 const { checkApiKey, decryption, validateJoi, checkToken } = require('../../middleware');
 const adminController = require('../../controllers/v1/adminController');
 const Joi = require('joi');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-const AWS = require('aws-sdk');
-
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
 
 router.post("/createAdmin", checkApiKey, decryption, validateJoi(Joi.object({
   name: Joi.string().required(),

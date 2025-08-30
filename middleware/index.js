@@ -25,11 +25,11 @@ const checkToken = async function (req, res, next) {
         req.loginUser.language = req.headers['accept-language'] || 'en';
         req.loginUser.name = data?.name;
 
-        let userData = await Admin.findOne({ 
-            _id: data.admin_id, 
-            token: req.headers['token'] 
+        let userData = await Admin.findOne({
+            _id: data.admin_id,
+            token: req.headers['token']
         });
-        
+
         if (userData) {
             next();
         } else {
@@ -49,12 +49,10 @@ const checkTokenBrand = async function (req, res, next) {
         req.loginUser.admin_id = data.admin_id;
         req.loginUser.language = req.headers['accept-language'] || 'en';
         req.loginUser.name = data?.name;
-
-        let userData = await Brand.findOne({ 
-            _id: data.admin_id, 
-            token: req.headers['token'] 
+        let userData = await Brand.findOne({
+            _id: data.admin_id,
+            token: req.headers['token']
         });
-        
         if (userData) {
             next();
         } else {
@@ -71,13 +69,13 @@ const checkTokenCustomer = async function (req, res, next) {
     try {
         req.loginUser = {};
         const token = req.headers['authorization']?.replace('Bearer ', '') || req.headers['token'];
-        
+
         if (!token) {
             return sendResponse(req, res, 401, '-1', { keyword: 'token_invalid', components: {} }, {});
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-        
+
         if (decoded.type !== 'access') {
             return sendResponse(req, res, 401, '-1', { keyword: 'token_invalid', components: {} }, {});
         }
@@ -98,7 +96,7 @@ const checkTokenCustomer = async function (req, res, next) {
             email: customer.email,
             name: customer.name
         };
-        
+
         next();
     } catch (e) {
         let keyword = 'token_invalid';

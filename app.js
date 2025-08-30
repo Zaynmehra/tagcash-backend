@@ -15,6 +15,9 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const cors = require('cors');
 app.use(cors());
+require('aws-sdk/lib/maintenance_mode_message').suppress = true;
+
+
 
 const requestLogger = (req, res, next) => {
     const startTime = Date.now();
@@ -61,6 +64,7 @@ let billing_route = require('./routes/v1/billing.route');
 let category_route = require('./routes/v1/category.route');
 let challenge_route = require('./routes/v1/challenge.route');
 let admin_route = require('./routes/v1/admin.route');
+let open_route = require('./routes/v1/open.route');
 
 app.use('/api/v1/auth', auth_route);
 app.use('/api/v1/customer', customer_route);
@@ -69,6 +73,7 @@ app.use('/api/v1/billing', billing_route);
 app.use('/api/v1/category', category_route);
 app.use('/api/v1/challenge', challenge_route);
 app.use('/api/v1/admin', admin_route);
+app.use('/api/v1/open', open_route);
 
 app.use("*", (req, res) => {
     res.status(404);

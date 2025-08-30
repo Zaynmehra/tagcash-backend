@@ -12,11 +12,12 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 
-const verifyGoogleToken = async (idToken) => {
+const verifyGoogleToken = async (idToken, deviceType) => {
     try {
+
         const ticket = await googleClient.verifyIdToken({
             idToken,
-            audience: process.env.GOOGLE_CLIENT_ID,
+            audience: (deviceType === 'A' || deviceType === 'I') ? process.env.MOBILE_GOOGLE_CLIENT_ID : process.env.GOOGLE_CLIENT_ID,
         });
         return ticket.getPayload();
     } catch (error) {
@@ -268,7 +269,7 @@ const customerController = {
                     message: 'ID token , instaId and phone are required'
                 });
             }
-            const googleUser = await verifyGoogleToken(idToken);
+            const googleUser = await verifyGoogleToken(idToken, deviceType);
             if (!googleUser) {
                 return res.status(401).json({
                     success: false,
@@ -379,7 +380,7 @@ const customerController = {
                 });
             }
 
-            const googleUser = await verifyGoogleToken(idToken);
+            const googleUser = await verifyGoogleToken(idToken, deviceType);
 
             if (!googleUser) {
                 return res.status(401).json({

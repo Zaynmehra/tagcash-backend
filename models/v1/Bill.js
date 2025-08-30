@@ -3,13 +3,18 @@ const mongoose = require('mongoose');
 const billSchema = new mongoose.Schema({
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customer',
+    ref: 'customers',
     required: [true, 'Customer ID is required']
   },
   brandId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Brand',
+    ref: 'newBrand',
     required: [true, 'Brand ID is required']
+  },
+  paymentType: {
+    type: String,
+    enum: ['upload bill', 'pay now'],
+    required: [true, 'Payment type is required']
   },
   instaId: {
     type: String,
@@ -27,6 +32,11 @@ const billSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  contentType: {
+    type: String,
+    enum: ['post', 'story', 'reel'],
+    default: 'reel'
+  },
   contentUrl: {
     type: String,
     trim: true
@@ -35,10 +45,27 @@ const billSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  razorpayOrderId: {
+    type: String,
+    trim: true
+  },
+  razorpayPaymentId: {
+    type: String,
+    trim: true
+  },
+  razorpaySignature: {
+    type: String,
+    trim: true
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'verified', 'failed'],
+    default: 'pending'
+  },
   status: {
     type: String,
-    enum: ['pending for approval', 'approved', 'rejected'],
-    default: 'pending for approval'
+    enum: ['pending for approval', 'upload content', 'approved', 'rejected'],
+    default: 'upload content'
   },
   brandStatusDate: {
     type: Date
@@ -63,6 +90,10 @@ const billSchema = new mongoose.Schema({
   brandRefundDate: {
     type: Date
   },
+  conversation: [{
+      remark: String,
+      reply: String,
+  }],
   refundDate: {
     type: Date
   },
@@ -93,4 +124,4 @@ const billSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('bills', billSchema);
+module.exports = mongoose.model('billing', billSchema);

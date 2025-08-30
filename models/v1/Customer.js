@@ -24,7 +24,7 @@ const customerSchema = new mongoose.Schema({
   password: {
     type: String,
     minlength: 6,
-    select: false 
+    select: false
   },
   profileImage: {
     type: String,
@@ -45,11 +45,11 @@ const customerSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
-    profile_pic_url:{
-        type: String,
+    profile_pic_url: {
+      type: String,
     },
-    full_name:{
-        type: String,
+    full_name: {
+      type: String,
     },
     postsCount: {
       type: Number,
@@ -78,6 +78,14 @@ const customerSchema = new mongoose.Schema({
     default: false
   },
   isVerified: {
+    type: Boolean,
+    default: false
+  },
+  brandVerified: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'newBrand'
+  }],
+  isTagVerified: {
     type: Boolean,
     default: false
   },
