@@ -19,6 +19,17 @@ require('aws-sdk/lib/maintenance_mode_message').suppress = true;
 
 
 
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'UP',
+        timestamp: moment().format('YYYY-MM-DD HH:mm:ss'),
+        uptime: Math.floor(process.uptime()),
+        memory: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB'
+    });
+});
+
+
+
 const requestLogger = (req, res, next) => {
     const startTime = Date.now();
     const timestamp = moment().format('YYYY-MM-DD HH:mm:ss');
