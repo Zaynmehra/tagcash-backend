@@ -1,12 +1,16 @@
-const { Category, SubCategory } = require('../../models/v1/Category');
+const Category = require('../../models/v1/Category');
 const { sendResponse } = require('../../middleware');
 
 let category_controller = {
     add_category: async (req, res) => {
-        const { name, isActive } = req.body;
+        const { category, subcategory, isActive } = req.body;
+
+        console.log({ category, subcategory, isActive })
+
         try {
             const newCategory = new Category({
-                name,
+                category,
+                subcategory: subcategory || [],
                 isActive: isActive !== undefined ? isActive : true
             });
 
@@ -23,29 +27,8 @@ let category_controller = {
         }
     },
 
-    add_subcategory: async (req, res) => {
-        const { name, categoryId } = req.body;
-        try {
-            const newSubCategory = new SubCategory({
-                name,
-                categoryId
-            });
-
-            const result = await newSubCategory.save();
-
-            if (!result) {
-                return sendResponse(req, res, 200, 0, { keyword: "failed_to_add_subcategory", components: {} });
-            }
-
-            return sendResponse(req, res, 200, 1, { keyword: "subcategory_added", components: { id: result._id } });
-        } catch (err) {
-            console.error("Error inserting subcategory:", err);
-            return sendResponse(req, res, 500, 0, { keyword: "failed_to_add_subcategory", components: {} });
-        }
-    },
-
     edit_category: async (req, res) => {
-        const { categoryId, name, isActive } = req.body;
+        const { categoryId, category, subcategory, isActive } = req.body;
         try {
             const existingCategory = await Category.findOne({
                 _id: categoryId,
@@ -57,10 +40,31 @@ let category_controller = {
             }
 
             let updateFields = {};
-            if (name) updateFields.name = name;
-            if (typeof isActive !== 'undefined') updateFields.isActive = isActive;
+            
+            // Fix: Check if category is provided (not just truthy)
+            if (category !== undefined && category !== null) {
+                updateFields.category = category;
+            }
+            
+            // Fix: Check if subcategory is provided (including empty arrays)
+            if (subcategory !== undefined && subcategory !== null) {
+                updateFields.subcategory = subcategory;
+            }
+            
+            // Fix: Proper boolean check
+            if (isActive !== undefined && isActive !== null) {
+                updateFields.isActive = isActive;
+            }
 
-            await Category.findByIdAndUpdate(categoryId, updateFields);
+            const result = await Category.findByIdAndUpdate(
+                categoryId, 
+                updateFields,
+                { new: true } // Return updated document
+            );
+
+            if (!result) {
+                return sendResponse(req, res, 200, 0, { keyword: "category_not_found", components: {} });
+            }
 
             return sendResponse(req, res, 200, 1, { keyword: "category_updated", components: {} });
         } catch (err) {
@@ -69,43 +73,69 @@ let category_controller = {
         }
     },
 
-    edit_subcategory: async (req, res) => {
-        const { subCategoryId, name, categoryId, isActive } = req.body;
+    add_subcategory: async (req, res) => {
+        const { categoryId, subcategory } = req.body;
         try {
-            const existingSubCategory = await SubCategory.findOne({
-                _id: subCategoryId,
+            const existingCategory = await Category.findOne({
+                _id: categoryId,
                 isDeleted: false
             });
 
-            if (!existingSubCategory) {
-                return sendResponse(req, res, 200, 0, { keyword: "subcategory_not_found", components: {} });
+            if (!existingCategory) {
+                return sendResponse(req, res, 200, 0, { keyword: "category_not_found", components: {} });
             }
 
-            let updateFields = {};
-            if (name) updateFields.name = name;
-            if (categoryId) updateFields.categoryId = categoryId;
-            if (typeof isActive !== 'undefined') updateFields.isActive = isActive;
+            // Fix: Handle both string and array for subcategory
+            const subcategoriesToAdd = Array.isArray(subcategory) ? subcategory : [subcategory];
 
-            await SubCategory.findByIdAndUpdate(subCategoryId, updateFields);
+            await Category.findByIdAndUpdate(categoryId, {
+                $push: { subcategory: { $each: subcategoriesToAdd } }
+            });
 
-            return sendResponse(req, res, 200, 1, { keyword: "subcategory_updated", components: {} });
+            return sendResponse(req, res, 200, 1, { keyword: "subcategory_added", components: {} });
         } catch (err) {
-            console.error("Error updating subcategory:", err);
-            return sendResponse(req, res, 500, 0, { keyword: "failed_to_update_subcategory", components: {} });
+            console.error("Error adding subcategory:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_add_subcategory", components: {} });
+        }
+    },
+
+    remove_subcategory: async (req, res) => {
+        const { categoryId, subcategory } = req.body;
+        try {
+            const existingCategory = await Category.findOne({
+                _id: categoryId,
+                isDeleted: false
+            });
+
+            if (!existingCategory) {
+                return sendResponse(req, res, 200, 0, { keyword: "category_not_found", components: {} });
+            }
+
+            // Fix: Handle both string and array for subcategory removal
+            const subcategoriesToRemove = Array.isArray(subcategory) ? subcategory : [subcategory];
+
+            await Category.findByIdAndUpdate(categoryId, {
+                $pull: { subcategory: { $in: subcategoriesToRemove } }
+            });
+
+            return sendResponse(req, res, 200, 1, { keyword: "subcategory_removed", components: {} });
+        } catch (err) {
+            console.error("Error removing subcategory:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_remove_subcategory", components: {} });
         }
     },
 
     list_category: async (req, res) => {
+        // Fix: Use req.body instead of req.query since route uses POST
+        const { page = 1, limit = 10, search } = req.body;
         try {
-            const { page = 1, limit = 10, search } = req.body;
             const skip = (page - 1) * limit;
-
             let query = { isDeleted: false };
-
-            if (search) {
-                query.name = { $regex: search, $options: 'i' };
+            
+            if (search && search.trim()) {
+                query.category = { $regex: search.trim(), $options: 'i' };
             }
-
+            
             const categories = await Category.find(query)
                 .skip(skip)
                 .limit(parseInt(limit))
@@ -114,72 +144,38 @@ let category_controller = {
             const totalCount = await Category.countDocuments(query);
             const totalPages = Math.ceil(totalCount / limit);
 
-            const categoriesWithSubcategories = await Promise.all(
-                categories.map(async (category) => {
-                    const subcategories = await SubCategory.find({
-                        categoryId: category._id,
-                        isDeleted: false
-                    }).sort({ createdAt: -1 });
-
-                    return {
-                        ...category.toJSON(),
-                        subcategories
-                    };
-                })
-            );
-
             const response = {
                 totalCount,
                 totalPages,
-                currentPage: page,
-                categories: categoriesWithSubcategories
+                currentPage: parseInt(page),
+                categories
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
         } catch (err) {
-            console.error("Error fetching categories with subcategories:", err);
+            console.error("Error fetching categories:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_categories", components: {} });
         }
     },
 
-    list_subcategory: async (req, res) => {
+    delete_category: async (req, res) => {
+        const { categoryId } = req.body;
         try {
-            const { page = 1, limit = 10, search, categoryId } = req.body;
-            const skip = (page - 1) * limit;
+            const existingCategory = await Category.findOne({
+                _id: categoryId,
+                isDeleted: false
+            });
 
-            let query = { isDeleted: false };
-
-            if (search) {
-                query.name = { $regex: search, $options: 'i' };
+            if (!existingCategory) {
+                return sendResponse(req, res, 200, 0, { keyword: "category_not_found", components: {} });
             }
 
-            if (categoryId) {
-                query.categoryId = categoryId;
-            }
+            await Category.findByIdAndUpdate(categoryId, { isDeleted: true });
 
-            const subcategories = await SubCategory.find(query)
-                .populate('categoryId', 'name')
-                .skip(skip)
-                .limit(parseInt(limit))
-                .sort({ createdAt: -1 });
-
-            const totalCount = await SubCategory.countDocuments(query);
-            const totalPages = Math.ceil(totalCount / limit);
-
-            const response = {
-                totalCount,
-                totalPages,
-                currentPage: page,
-                subcategories: subcategories.map(subcategory => ({
-                    ...subcategory.toJSON(),
-                    categoryName: subcategory.categoryId ? subcategory.categoryId.name : null
-                }))
-            };
-
-            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+            return sendResponse(req, res, 200, 1, { keyword: "category_deleted", components: {} });
         } catch (err) {
-            console.error("Error fetching subcategories:", err);
-            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_subcategories", components: {} });
+            console.error("Error deleting category:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_delete_category", components: {} });
         }
     }
 };

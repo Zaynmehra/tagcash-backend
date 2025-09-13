@@ -135,7 +135,6 @@ const brandSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-
   mustTryItems: [{
     name: {
       type: String,

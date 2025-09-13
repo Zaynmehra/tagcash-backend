@@ -41,6 +41,18 @@ const customerSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
+    avgViews:{
+      type: Number,
+      default: 0
+    },
+    avgLikes:{
+      type: Number,
+      default: 0
+    },
+    avgComments:{
+      type: Number,
+      default: 0
+    },
     followingCount: {
       type: Number,
       default: 0

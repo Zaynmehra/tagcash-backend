@@ -3,15 +3,8 @@ const router = express.Router();
 const { checkApiKey, decryption, validateJoi, checkToken } = require('../../middleware');
 const challengeController = require('../../controllers/v1/challengeController');
 const Joi = require('joi');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-const AWS = require('aws-sdk');
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
+const {s3, upload} = require("../../utils/aws")
 
 router.post("/addChallenges", checkApiKey, checkToken, upload.fields([
   { name: 'challengesimage', maxCount: 1 },

@@ -353,7 +353,7 @@ let billing_controller = {
             const bill = await Bill.findOne({
                 _id: billingId,
                 isDeleted: false
-            }).populate('customerId', 'name');
+            }).populate('customerId', 'name instaDetails profileImage email instaId brandVerified');
 
             if (!bill) {
                 return sendResponse(req, res, 200, 0, { keyword: "bill_not_found", components: {} });
@@ -387,6 +387,7 @@ let billing_controller = {
                 metaFetch: bill.metaFetch,
                 conversation: bill.conversation || [],
                 paymentType: bill.paymentType,
+                customerDetails : bill.customerId,
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);

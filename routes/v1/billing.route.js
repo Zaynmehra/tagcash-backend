@@ -3,15 +3,7 @@ const router = express.Router();
 const { checkApiKey, decryption, validateJoi, checkToken, checkTokenBrand, checkTokenCustomer } = require('../../middleware');
 const billingController = require('../../controllers/v1/billingController');
 const Joi = require('joi');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-const AWS = require('aws-sdk');
-
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-});
+const {s3, upload} = require("../../utils/aws")
 
 router.post("/listBill", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
   page: Joi.number().allow(null, '').optional(),
@@ -29,7 +21,7 @@ router.post("/listBill", checkApiKey, checkToken, decryption, validateJoi(Joi.ob
 
 router.post("/getBillById", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
   billingId: Joi.string().required(),
-})), billingController.get_billing_by_id);
+})), billingController.get_content_by_id);
 
 
 

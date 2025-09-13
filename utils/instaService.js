@@ -282,6 +282,51 @@ const getInstagramFollowers = async (username) => {
     }
 };
 
+const getInstagramPostMetrics = async (reelUrl) => {
+    try {
+
+        let postUrl = reelUrl;
+        if (reelUrl.includes('/reels/')) {
+            postUrl = reelUrl.replace('/reels/', '/p/');
+        }
+
+        const options = {
+            method: 'GET',
+            url: 'https://instagram-scraper-stable-api.p.rapidapi.com/get_media_data.php',
+            params: {
+                reel_post_code_or_url: postUrl,
+                type: 'post'
+            },
+            headers: {
+                'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+                'X-RapidAPI-Host': 'instagram-scraper-stable-api.p.rapidapi.com'
+            }
+        };
+
+        const response = await axios.request(options);
+
+        if (response.data) {
+            const mediaData = response.data;
+            const viewsCount = mediaData.video_play_count || 0;
+            const likesCount = mediaData.edge_media_preview_like?.count || 0;
+            const commentsCount = mediaData.edge_media_preview_comment?.count || 0;
+            const playCount = mediaData.video_view_count || 0;
+            
+            return {
+                viewsCount: viewsCount,
+                likesCount: likesCount,
+                commentsCount: commentsCount,
+                playCount: playCount
+            };
+        } else {
+             throw new Error('No data received from Instagram API');
+        }
+    } catch (error) {
+        console.error('Error fetching Instagram Reel data:', error.message);
+        throw error; 
+    }
+};
+
 module.exports = {
-    getInstagramFollowers, getMemberType
+    getInstagramFollowers, getMemberType, getInstagramPostMetrics
 };

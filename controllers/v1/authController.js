@@ -323,7 +323,7 @@ let auth_controller = {
             if (status) {
                 query.status = status;
             }
-            
+
             const bills = await Bill.find(query)
                 .skip(skip)
                 .limit(parseInt(limit))
@@ -363,11 +363,39 @@ let auth_controller = {
             const customer = await Customer.findOne({
                 _id: userId,
                 isDeleted: false
+            }).populate({
+                path: 'brandVerified',
+                select: 'brandname brandlogo email phone category subcategory averageRating totalReviews isActive isVerified'
             });
 
             if (!customer) {
                 return sendResponse(req, res, 200, 0, { keyword: "user_not_found", components: {} });
             }
+            const bills = await Bill.find({
+                customerId: userId,
+                isDeleted: false
+            }).populate({
+                path: 'brandId',
+                select: 'brandname brandlogo email phone category subcategory averageRating totalReviews rateOfTwo paymentType'
+            }).sort({ createdAt: -1 });
+            const billingStats = {
+                totalBills: bills.length,
+                totalAmount: bills.reduce((sum, bill) => sum + (bill.billAmount || 0), 0),
+                pendingBills: bills.filter(bill => bill.status === 'pending for approval').length,
+                approvedBills: bills.filter(bill => bill.status === 'approved').length,
+                rejectedBills: bills.filter(bill => bill.status === 'rejected').length,
+                totalRefunds: bills.reduce((sum, bill) => sum + (bill.refundAmount || 0), 0),
+                successfulPayments: bills.filter(bill => bill.paymentStatus === 'verified').length
+            };
+            const engagementStats = {
+                totalViews: bills.reduce((sum, bill) => sum + (bill.views || 0), 0),
+                totalLikes: bills.reduce((sum, bill) => sum + (bill.likes || 0), 0),
+                totalComments: bills.reduce((sum, bill) => sum + (bill.comments || 0), 0),
+                avgViews: bills.length > 0 ? Math.round(bills.reduce((sum, bill) => sum + (bill.views || 0), 0) / bills.length) : 0,
+                avgLikes: bills.length > 0 ? Math.round(bills.reduce((sum, bill) => sum + (bill.likes || 0), 0) / bills.length) : 0,
+                avgComments: bills.length > 0 ? Math.round(bills.reduce((sum, bill) => sum + (bill.comments || 0), 0) / bills.length) : 0
+            };
+            const workedWithBrands = [...new Set(bills.map(bill => bill.brandId?._id?.toString()))].length;
 
             const response = {
                 id: customer._id,
@@ -376,13 +404,72 @@ let auth_controller = {
                 email: customer.email,
                 profileImage: customer.profileImage,
                 instaId: customer.instaId,
-                instaDetails: customer.instaDetails,
                 upiId: customer.upiId,
                 category: customer.category,
                 isVerified: customer.isVerified,
                 isActive: customer.isActive,
                 isLocked: customer.isLocked,
+                isTagVerified: customer.isTagVerified,
+                isEmailVerified: customer.isEmailVerified,
+                isVerifiedPhoneNo: customer.isVerifiedPhoneNo,
+                authProvider: customer.authProvider,
+                accountStatus: customer.accountStatus,
+                instaDetails: {
+                    followersCount: customer.instaDetails?.followersCount || 0,
+                    followingCount: customer.instaDetails?.followingCount || 0,
+                    postsCount: customer.instaDetails?.postsCount || 0,
+                    avgViews: customer.instaDetails?.avgViews || 0,
+                    avgLikes: customer.instaDetails?.avgLikes || 0,
+                    avgComments: customer.instaDetails?.avgComments || 0,
+                    profile_pic_url: customer.instaDetails?.profile_pic_url || '',
+                    full_name: customer.instaDetails?.full_name || '',
+                    memberType: customer.instaDetails?.memberType || 'Starter Member'
+                },
+                brandVerified: customer.brandVerified || [],
+                totalBrandsVerified: customer.brandVerified?.length || 0,
+                preferences: {
+                    language: customer.preferences?.language || 'en',
+                    notifications: {
+                        email: customer.preferences?.notifications?.email !== false,
+                        push: customer.preferences?.notifications?.push !== false
+                    },
+                    theme: customer.preferences?.theme || 'light'
+                },
+                deviceName: customer.deviceName,
+                deviceType: customer.deviceType,
                 lastActive: customer.lastActive,
+                billingStats,
+                engagementStats,
+                workedWithBrands,
+                recentBills: bills.slice(0, 10).map(bill => ({
+                    id: bill._id,
+                    brandInfo: {
+                        id: bill.brandId?._id,
+                        name: bill.brandId?.brandname,
+                        logo: bill.brandId?.brandlogo,
+                        category: bill.brandId?.category,
+                        subcategory: bill.brandId?.subcategory,
+                        rating: bill.brandId?.averageRating,
+                        paymentType: bill.brandId?.paymentType
+                    },
+                    billNo: bill.billNo,
+                    billAmount: bill.billAmount,
+                    paymentType: bill.paymentType,
+                    contentType: bill.contentType,
+                    contentUrl: bill.contentUrl,
+                    instaContentUrl: bill.instaContentUrl,
+                    paymentStatus: bill.paymentStatus,
+                    status: bill.status,
+                    refundAmount: bill.refundAmount,
+                    refundStatus: bill.refundStatus,
+                    likes: bill.likes,
+                    comments: bill.comments,
+                    views: bill.views,
+                    createdAt: bill.createdAt,
+                    updatedAt: bill.updatedAt,
+                    brandStatusDate: bill.brandStatusDate,
+                    refundDate: bill.refundDate
+                })),
                 createdAt: customer.createdAt,
                 updatedAt: customer.updatedAt
             };

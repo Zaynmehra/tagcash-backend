@@ -7,15 +7,11 @@ let admin_controller = {
     create_admin: async (req, res) => {
         try {
             const { name, email, password, role, permissions } = req.body;
-
             const existingAdmin = await Admin.findOne({ email: email, isDeleted: false });
-
             if (existingAdmin) {
                 return sendResponse(req, res, 200, 0, { keyword: "email_exist", components: {} });
             }
-
             const encryptedPassword = cryptoLib.encrypt(password, shaKey, process.env.PASSWORD_ENC_IV);
-
             const newAdmin = new Admin({
                 name,
                 email,
@@ -23,13 +19,10 @@ let admin_controller = {
                 role: role || 'admin',
                 permissions: permissions || []
             });
-
             const result = await newAdmin.save();
-
             if (!result) {
                 return sendResponse(req, res, 200, 0, { keyword: "failed_to_add", components: {} });
             }
-
             return sendResponse(req, res, 200, 1, { keyword: "added", components: { id: result._id } });
         } catch (err) {
             console.error("Error creating admin:", err);

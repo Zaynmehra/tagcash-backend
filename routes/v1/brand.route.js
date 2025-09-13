@@ -3,22 +3,8 @@ const router = express.Router();
 const { checkApiKey, decryption, validateJoi, checkToken, checkTokenBrand, checkTokenCustomer } = require('../../middleware');
 const brandController = require('../../controllers/v1/brandController');
 const Joi = require('joi');
-  const AWS = require('aws-sdk');
-  const multer = require('multer');
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-      fileSize: 10 * 1024 * 1024, 
-      files: 20
-    }
-  });
 
-
-  const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION,
-  });
+const {s3, upload} = require("../../utils/aws")
 
 router.post("/registerBrand", checkApiKey, decryption, validateJoi(Joi.object({
   brandname: Joi.string().required(),
@@ -85,35 +71,35 @@ router.post("/getBrandById", checkApiKey, checkToken, decryption, validateJoi(Jo
 })), brandController.get_brand_by_id);
 
 router.post("/addBrand", checkApiKey, checkTokenBrand, upload.single('brandlogo'), async (req, res, next) => {
-    try {
-      let imageUrl;
-      if (req.file) {
-        const params = {
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: `TagCashMVP/user/${Date.now()}_${req.file.originalname}`,
-          Body: req.file.buffer,
-          ContentType: req.file.mimetype,
-          ACL: 'public-read'
-        };
-        const uploadResult = await s3.upload(params).promise();
-        imageUrl = uploadResult.Location;
-        var imagename = imageUrl;
-        req.body.brandlogo = imagename;
-      }
-      next();
-    } catch (error) {
-      return res.status(500).json({ code: 0, message: 'Failed to upload image' });
+  try {
+    let imageUrl;
+    if (req.file) {
+      const params = {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: `TagCashMVP/user/${Date.now()}_${req.file.originalname}`,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+        ACL: 'public-read'
+      };
+      const uploadResult = await s3.upload(params).promise();
+      imageUrl = uploadResult.Location;
+      var imagename = imageUrl;
+      req.body.brandlogo = imagename;
     }
-  }, decryption, validateJoi(Joi.object({
-    brandname: Joi.string().required(),
-    phone: Joi.string().required(),
-    email: Joi.string().email().required(),
-    brandlogo: Joi.string().optional(),
-    managername: Joi.string().required(),
-    brandurl: Joi.string().optional(),
-    category: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
-    subcategory: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
-  })), brandController.add_brand);
+    next();
+  } catch (error) {
+    return res.status(500).json({ code: 0, message: 'Failed to upload image' });
+  }
+}, decryption, validateJoi(Joi.object({
+  brandname: Joi.string().required(),
+  phone: Joi.string().required(),
+  email: Joi.string().email().required(),
+  brandlogo: Joi.string().optional(),
+  managername: Joi.string().required(),
+  brandurl: Joi.string().optional(),
+  category: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
+  subcategory: Joi.alternatives().try(Joi.string(), Joi.array().items(Joi.string())).optional(),
+})), brandController.add_brand);
 
 router.post("/updateBrand", checkApiKey, checkTokenBrand,
   upload.fields([
@@ -123,7 +109,7 @@ router.post("/updateBrand", checkApiKey, checkTokenBrand,
     { name: 'posterImages', maxCount: 10 },
     { name: 'mustTryItemImages', maxCount: 20 },
     { name: 'tryThisOutImages', maxCount: 20 }
-  ]), 
+  ]),
   async (req, res, next) => {
     try {
       if (req.files && req.files.brandlogo && req.files.brandlogo[0]) {
@@ -217,13 +203,13 @@ router.post("/updateBrand", checkApiKey, checkTokenBrand,
             imageUrlIndex++;
           }
         }
-        
+
         req.body.mustTryItems = mustTryItems;
       }
 
       if (req.files && req.files.tryThisOutImages) {
         const tryThisOut = JSON.parse(req.body.tryThisOut || '[]');
-        
+
         const uploadedImageUrls = [];
         for (const file of req.files.tryThisOutImages) {
           const params = {
@@ -236,26 +222,26 @@ router.post("/updateBrand", checkApiKey, checkTokenBrand,
           const uploadResult = await s3.upload(params).promise();
           uploadedImageUrls.push(uploadResult.Location);
         }
-      
+
         let imageUrlIndex = 0;
         for (let i = 0; i < tryThisOut.length; i++) {
           const imageCount = parseInt(req.body[`tryThisOutImageCount_${i}`] || '0');
-          
+
           if (imageCount > 0 && imageUrlIndex < uploadedImageUrls.length) {
             const itemImages = [];
-            
+
             // Assign the specified number of images to this item
             for (let j = 0; j < imageCount && imageUrlIndex < uploadedImageUrls.length; j++) {
               itemImages.push(uploadedImageUrls[imageUrlIndex]);
               imageUrlIndex++;
             }
-            
+
             if (itemImages.length > 0) {
               tryThisOut[i].images = itemImages;
             }
           }
         }
-        
+
         req.body.tryThisOut = tryThisOut;
       }
 
@@ -265,7 +251,7 @@ router.post("/updateBrand", checkApiKey, checkTokenBrand,
       return res.status(500).json({ code: 0, message: 'Failed to upload images' });
     }
   },
-  decryption, 
+  decryption,
   brandController.update_brand
 );
 
@@ -325,6 +311,166 @@ router.post("/getBrandCustomerBills", checkApiKey, checkTokenBrand, decryption, 
 })), brandController.get_brand_customer_bills);
 
 
+router.post("/checkEngagements", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  billId: Joi.string().required(),
+})), brandController.check_engagements);
+
+
 router.get("/getVerifiedBrand", checkApiKey, checkTokenCustomer, decryption, brandController.get_verified_brand);
+
+
+router.post("/createOffer", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  title: Joi.string().max(200).required(),
+  description: Joi.string().max(1000).required(),
+  shortDescription: Joi.string().max(150).optional(),
+  offerType: Joi.string().valid('percentage', 'fixed_amount', 'buy_one_get_one', 'free_service', 'cashback', 'points', 'custom').optional(),
+  discountValue: Joi.number().min(0).optional(),
+  maxDiscountAmount: Joi.number().min(0).optional(),
+  minimumPurchaseAmount: Joi.number().min(0).optional(),
+  offerCode: Joi.string().max(20).optional(),
+  startDate: Joi.date().required(),
+  endDate: Joi.date().required(),
+  totalUsageLimit: Joi.number().min(1).optional(),
+  perCustomerLimit: Joi.number().min(1).optional(),
+  targetAudience: Joi.string().valid('all', 'verified_only', 'new_customers', 'returning_customers', 'specific_customers', 'followers_range').optional(),
+  verifiedCustomersOnly: Joi.boolean().optional(),
+  specificCustomers: Joi.array().items(Joi.string()).optional(),
+  minFollowersRequired: Joi.number().min(0).optional(),
+  maxFollowersAllowed: Joi.number().min(0).optional(),
+  targetCategories: Joi.array().items(Joi.string()).optional(),
+  targetLocations: Joi.array().items(Joi.object({
+    city: Joi.string().optional(),
+    state: Joi.string().optional(),
+    country: Joi.string().optional()
+  })).optional(),
+  offerImages: Joi.array().items(Joi.object({
+    url: Joi.string().optional(),
+    alt: Joi.string().max(200).optional(),
+    type: Joi.string().valid('banner', 'thumbnail', 'detail', 'social_media').optional()
+  })).optional(),
+  bannerImage: Joi.string().optional(),
+  termsAndConditions: Joi.array().items(Joi.string().max(500)).optional(),
+  requirements: Joi.array().items(Joi.string().max(300)).optional(),
+  redemptionProcess: Joi.string().max(1000).optional(),
+  redemptionLocation: Joi.string().valid('online', 'in_store', 'both').optional(),
+  applicableItems: Joi.array().items(Joi.object({
+    name: Joi.string().max(200).optional(),
+    category: Joi.string().optional(),
+    isExcluded: Joi.boolean().optional()
+  })).optional(),
+  priority: Joi.number().min(1).max(10).optional(),
+  isFeatured: Joi.boolean().optional(),
+  isFlashSale: Joi.boolean().optional(),
+  socialMediaRequirements: Joi.object({
+    requireInstagramPost: Joi.boolean().optional(),
+    requireStoryMention: Joi.boolean().optional(),
+    requireBrandTag: Joi.boolean().optional(),
+    requiredHashtags: Joi.array().items(Joi.string()).optional(),
+    minimumViews: Joi.number().min(0).optional(),
+    minimumLikes: Joi.number().min(0).optional()
+  }).optional(),
+  notificationSettings: Joi.object({
+    notifyOnUsage: Joi.boolean().optional(),
+    notifyOnExpiry: Joi.boolean().optional(),
+    reminderDays: Joi.number().optional()
+  }).optional()
+})), brandController.create_offer);
+
+router.post("/getOffers", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  page: Joi.number().min(1).optional(),
+  limit: Joi.number().min(1).max(100).optional(),
+  status: Joi.string().valid('draft', 'active', 'paused', 'expired', 'cancelled').optional(),
+  offerType: Joi.string().valid('percentage', 'fixed_amount', 'buy_one_get_one', 'free_service', 'cashback', 'points', 'custom').optional(),
+  isFeatured: Joi.boolean().optional(),
+  isFlashSale: Joi.boolean().optional()
+})), brandController.get_offers);
+
+router.post("/getOfferById", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required()
+})), brandController.get_offer_by_id);
+
+router.post("/updateOffer", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required(),
+  title: Joi.string().max(200).optional(),
+  description: Joi.string().max(1000).optional(),
+  shortDescription: Joi.string().max(150).optional(),
+  offerType: Joi.string().valid('percentage', 'fixed_amount', 'buy_one_get_one', 'free_service', 'cashback', 'points', 'custom').optional(),
+  discountValue: Joi.number().min(0).optional(),
+  maxDiscountAmount: Joi.number().min(0).optional(),
+  minimumPurchaseAmount: Joi.number().min(0).optional(),
+  offerCode: Joi.string().max(20).optional(),
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().optional(),
+  totalUsageLimit: Joi.number().min(1).optional(),
+  perCustomerLimit: Joi.number().min(1).optional(),
+  targetAudience: Joi.string().valid('all', 'verified_only', 'new_customers', 'returning_customers', 'specific_customers', 'followers_range').optional(),
+  verifiedCustomersOnly: Joi.boolean().optional(),
+  specificCustomers: Joi.array().items(Joi.string()).optional(),
+  minFollowersRequired: Joi.number().min(0).optional(),
+  maxFollowersAllowed: Joi.number().min(0).optional(),
+  targetCategories: Joi.array().items(Joi.string()).optional(),
+  targetLocations: Joi.array().items(Joi.object({
+    city: Joi.string().optional(),
+    state: Joi.string().optional(),
+    country: Joi.string().optional()
+  })).optional(),
+  offerImages: Joi.array().items(Joi.object({
+    url: Joi.string().optional(),
+    alt: Joi.string().max(200).optional(),
+    type: Joi.string().valid('banner', 'thumbnail', 'detail', 'social_media').optional()
+  })).optional(),
+  bannerImage: Joi.string().optional(),
+  termsAndConditions: Joi.array().items(Joi.string().max(500)).optional(),
+  requirements: Joi.array().items(Joi.string().max(300)).optional(),
+  redemptionProcess: Joi.string().max(1000).optional(),
+  redemptionLocation: Joi.string().valid('online', 'in_store', 'both').optional(),
+  applicableItems: Joi.array().items(Joi.object({
+    name: Joi.string().max(200).optional(),
+    category: Joi.string().optional(),
+    isExcluded: Joi.boolean().optional()
+  })).optional(),
+  priority: Joi.number().min(1).max(10).optional(),
+  isFeatured: Joi.boolean().optional(),
+  isFlashSale: Joi.boolean().optional(),
+  socialMediaRequirements: Joi.object({
+    requireInstagramPost: Joi.boolean().optional(),
+    requireStoryMention: Joi.boolean().optional(),
+    requireBrandTag: Joi.boolean().optional(),
+    requiredHashtags: Joi.array().items(Joi.string()).optional(),
+    minimumViews: Joi.number().min(0).optional(),
+    minimumLikes: Joi.number().min(0).optional()
+  }).optional(),
+  status: Joi.string().valid('draft', 'active', 'paused', 'expired', 'cancelled').optional(),
+  isActive: Joi.boolean().optional(),
+  notificationSettings: Joi.object({
+    notifyOnUsage: Joi.boolean().optional(),
+    notifyOnExpiry: Joi.boolean().optional(),
+    reminderDays: Joi.number().optional()
+  }).optional()
+})), brandController.update_offer);
+
+router.post("/deleteOffer", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required()
+})), brandController.delete_offer);
+
+router.post("/activateOffer", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required()
+})), brandController.activate_offer);
+
+router.post("/deactivateOffer", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required()
+})), brandController.deactivate_offer);
+
+router.post("/getOfferUsage", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().required(),
+  page: Joi.number().min(1).optional(),
+  limit: Joi.number().min(1).max(100).optional()
+})), brandController.get_offer_usage);
+
+router.post("/getOfferAnalytics", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  offerId: Joi.string().optional(),
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().optional()
+})), brandController.get_offer_analytics);
 
 module.exports = router;

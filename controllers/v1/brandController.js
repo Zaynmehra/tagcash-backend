@@ -10,8 +10,10 @@ const shaKey = cryptoLib.getHashSha256(process.env.PASSWORD_ENC_KEY, 32);
 const { sendWelcomeEmail, sendVerificationEmail } = require('../../utils/sendOtp');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const Offers = require('../../models/v1/OffersDeals');
 
 const Razorpay = require('razorpay');
+const { getInstagramPostMetrics } = require('../../utils/instaService');
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET
@@ -300,7 +302,8 @@ let brand_controller = {
                     { brandname: { $regex: search, $options: 'i' } },
                     { managername: { $regex: search, $options: 'i' } },
                     { email: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } }
+                    { phone: { $regex: search, $options: 'i' } },
+                    { _id: { $regex: search, $options: 'i' } }
                 ];
             }
 
@@ -419,8 +422,10 @@ let brand_controller = {
     },
 
     get_brand_by_id: async (req, res) => {
-        const { brandId } = req.body;
+        const { brandId, startDate, endDate } = req.body;
+
         try {
+            // Find the brand with populated fields
             const brand = await Brand.findOne({
                 _id: brandId,
                 isDeleted: false
@@ -430,28 +435,157 @@ let brand_controller = {
                 return sendResponse(req, res, 200, 0, { keyword: "brand_not_found", components: {} });
             }
 
-            const response = {
-                id: brand._id,
-                brandname: brand.brandname,
-                phone: brand.phone,
-                email: brand.email,
-                brandurl: brand.brandurl,
-                brandlogo: brand.brandlogo,
-                managername: brand.managername,
-                category: brand.category,
-                subcategory: brand.subcategory,
-                isVerified: brand.isVerified,
-                isActive: brand.isActive,
-                isLocked: brand.isLocked,
-                lastActive: brand.lastActive,
-                createdAt: brand.createdAt,
-                updatedAt: brand.updatedAt,
-                brandArchive: brand.archive
+            // Build date query for billing statistics
+            let dateQuery = {};
+            if (startDate || endDate) {
+                dateQuery.createdAt = {};
+                if (startDate) dateQuery.createdAt.$gte = new Date(startDate);
+                if (endDate) dateQuery.createdAt.$lte = new Date(endDate);
+            }
+
+            // Get total billing count
+            const totalBilling = await Bill.countDocuments({
+                brandId: brandId,
+                isDeleted: false,
+                ...dateQuery
+            });
+
+            // Build approved/rejected date query (using brandStatusDate)
+            let approvedDateQuery = {};
+            if (startDate || endDate) {
+                approvedDateQuery.brandStatusDate = {};
+                if (startDate) approvedDateQuery.brandStatusDate.$gte = new Date(startDate);
+                if (endDate) approvedDateQuery.brandStatusDate.$lte = new Date(endDate);
+            }
+
+            // Get approved bills count
+            const totalApproved = await Bill.countDocuments({
+                brandId: brandId,
+                status: 'approved',
+                isDeleted: false,
+                ...approvedDateQuery
+            });
+
+            // Get rejected bills count
+            const totalRejected = await Bill.countDocuments({
+                brandId: brandId,
+                status: 'rejected',
+                isDeleted: false,
+                ...approvedDateQuery
+            });
+
+            // Get pending bills count
+            const totalPending = await Bill.countDocuments({
+                brandId: brandId,
+                status: 'pending for approval',
+                isDeleted: false,
+                ...dateQuery
+            });
+
+            // Build refund date query
+            let refundDateQuery = {};
+            if (startDate || endDate) {
+                refundDateQuery.brandRefundDate = {};
+                if (startDate) refundDateQuery.brandRefundDate.$gte = new Date(startDate);
+                if (endDate) refundDateQuery.brandRefundDate.$lte = new Date(endDate);
+            }
+
+            // Get total refund amount
+            const totalRefundResult = await Bill.aggregate([
+                {
+                    $match: {
+                        brandId: brandId,
+                        brandRefundStatus: 'success',
+                        isDeleted: false,
+                        ...refundDateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRefund: { $sum: '$refundAmount' }
+                    }
+                }
+            ]);
+
+            const totalRefund = totalRefundResult.length > 0 ? totalRefundResult[0].totalRefund : 0;
+
+            // Get total sales amount (all time)
+            const totalSalesResult = await Bill.aggregate([
+                {
+                    $match: {
+                        brandId: new mongoose.Types.ObjectId(brandId),
+                        isDeleted: false
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalSales: { $sum: '$billAmount' }
+                    }
+                }
+            ]);
+
+            const totalSales = totalSalesResult.length > 0 ? totalSalesResult[0].totalSales : 0;
+
+            // Get total approved amount within date range
+            const totalApprovedAmountResult = await Bill.aggregate([
+                {
+                    $match: {
+                        brandId: new mongoose.Types.ObjectId(brandId),
+                        status: 'approved',
+                        isDeleted: false,
+                        ...approvedDateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalApprovedAmount: { $sum: '$billAmount' }
+                    }
+                }
+            ]);
+
+            const totalApprovedAmount = totalApprovedAmountResult.length > 0 ? totalApprovedAmountResult[0].totalApprovedAmount : 0;
+
+            // Prepare enhanced response with both brand data and billing statistics
+            const enhancedBrandData = {
+                // Original brand data
+                ...brand.toObject(),
+
+                // Billing statistics
+                billingStats: {
+                    totalBilling,
+                    totalApproved,
+                    totalRejected,
+                    totalPending,
+                    totalRefund,
+                    totalSales,
+                    totalApprovedAmount,
+
+                    // Additional calculated fields
+                    approvalRate: totalBilling > 0 ? ((totalApproved / totalBilling) * 100).toFixed(2) : 0,
+                    rejectionRate: totalBilling > 0 ? ((totalRejected / totalBilling) * 100).toFixed(2) : 0,
+                    pendingRate: totalBilling > 0 ? ((totalPending / totalBilling) * 100).toFixed(2) : 0,
+                },
+
+                // Brand-specific metrics (from existing brand data)
+                brandMetrics: {
+                    archive: brand?.archive === false ? false : true,
+                    paymentType: brand?.paymentType || "",
+                    balance: brand?.balance,
+                    averageRating: brand?.averageRating || 0,
+                    totalReviews: brand?.totalReviews || 0,
+                    totalCampaigns: brand?.totalCampaigns || 0,
+                    totalInfluencers: brand?.totalInfluencers || 0,
+                    totalAddedBalance: brand?.totalAddedBalance || brand?.balance,
+                }
             };
 
-            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, enhancedBrandData);
+
         } catch (err) {
-            console.error("Error fetching brand by ID:", err);
+            console.error("Error fetching brand by ID with billing data:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
         }
     },
@@ -609,13 +743,8 @@ let brand_controller = {
             if (req.body.brandurl) updateFields.brandurl = req.body.brandurl;
             if (req.body.website) updateFields.website = req.body.website;
             if (req.body.about) updateFields.about = req.body.about;
-            if (req.body.address) {
-                if (req.body.address.street) updateFields['address.street'] = req.body.address.street;
-                if (req.body.address.city) updateFields['address.city'] = req.body.address.city;
-                if (req.body.address.state) updateFields['address.state'] = req.body.address.state;
-                if (req.body.address.country) updateFields['address.country'] = req.body.address.country;
-                if (req.body.address.zipCode) updateFields['address.zipCode'] = req.body.address.zipCode;
-                if (req.body.address.fullAddress) updateFields['address.fullAddress'] = req.body.address.fullAddress;
+            if (req.body.address && Array.isArray(req.body.address) && req.body.address.length > 0) {
+                if (req.body.address) updateFields['address'] = req.body.address;
             }
             if (req.body.location) {
                 if (req.body.location.lat) updateFields['location.lat'] = req.body.location.lat;
@@ -1475,6 +1604,399 @@ let brand_controller = {
         } catch (error) {
             console.error("Error fetching brand customer bills:", error);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+        }
+    },
+
+    check_engagements: async (req, res) => {
+        try {
+            const { admin_id: brandId } = req.loginUser;
+            const { billId } = req.body;
+            const bill = await Bill.findById(billId);
+            if (!bill) {
+                return sendResponse(req, res, 404, 0, { keyword: "Bill not found", components: {} });
+            }
+            if (bill.brandId.toString() !== brandId.toString()) {
+                return sendResponse(req, res, 401, 0, { keyword: "Not Authorized To modify this Bill", components: {} });
+            }
+
+            if (!bill.instaContentUrl || bill.instaContentUrl.trim() === '') {
+                return sendResponse(req, res, 400, 0, {
+                    keyword: "Instagram content URL is required",
+                    components: {}
+                });
+            }
+
+            const urlPattern = /^https?:\/\/(www\.)?instagram\.com\/(p|reels)\/[A-Za-z0-9_-]+\/?$/;
+            if (!urlPattern.test(bill.instaContentUrl)) {
+                return sendResponse(req, res, 400, 0, {
+                    keyword: "Invalid Instagram URL format",
+                    components: {}
+                });
+            }
+
+            const metrics = await getInstagramPostMetrics(bill.instaContentUrl);
+
+            const updatedBill = await Bill.findByIdAndUpdate(
+                billId,
+                {
+                    $set: {
+                        likes: metrics.likesCount,
+                        comments: metrics.commentsCount,
+                        views: metrics.viewsCount,
+                        metaFetch: JSON.stringify({
+                            fetchedAt: new Date(),
+                            playCount: metrics.playCount,
+                            source: 'instagram-api'
+                        }),
+                        lastActive: new Date()
+                    }
+                },
+                { new: true }
+            );
+
+            return sendResponse(req, res, 200, 1, {
+                keyword: "Engagements updated successfully",
+                components: {
+                    bill: updatedBill,
+                    metrics: {
+                        likes: metrics.likesCount,
+                        comments: metrics.commentsCount,
+                        views: metrics.viewsCount,
+                        playCount: metrics.playCount
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error("Error checking engagements:", error);
+            if (error.response?.status === 404) {
+                return sendResponse(req, res, 404, 0, {
+                    keyword: "Instagram content not found or private",
+                    components: {}
+                });
+            }
+
+            if (error.response?.status === 429) {
+                return sendResponse(req, res, 429, 0, {
+                    keyword: "API rate limit exceeded. Please try again later",
+                    components: {}
+                });
+            }
+
+            return sendResponse(req, res, 500, 0, {
+                keyword: "Failed to fetch engagements",
+                components: {}
+            });
+        }
+    },
+
+    create_offer: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let offerData = req.body;
+
+            let brand = await Brand.findOne({
+                _id: admin_id,
+                isActive: true,
+                isDeleted: false,
+                isLocked: false
+            });
+
+            if (!brand) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_found", components: {} });
+            }
+
+            offerData.createdBy = admin_id;
+            offerData.brandName = brand.brandname;
+
+            if (offerData.startDate >= offerData.endDate) {
+                return sendResponse(req, res, 200, 0, { keyword: "invalid_date_range", components: {} });
+            }
+
+            let newOffer = new Offers(offerData);
+            await newOffer.save();
+
+            return sendResponse(req, res, 200, 1, { keyword: "offer_created_successfully", components: {} }, newOffer);
+        } catch (e) {
+            if (e.code === 11000) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_code_already_exists", components: {} });
+            }
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    get_offers: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { page = 1, limit = 10, status, offerType, isFeatured, isFlashSale } = req.body;
+
+            let query = {
+                createdBy: admin_id,
+                isDeleted: false
+            };
+
+            if (status) query.status = status;
+            if (offerType) query.offerType = offerType;
+            if (isFeatured !== undefined) query.isFeatured = isFeatured;
+            if (isFlashSale !== undefined) query.isFlashSale = isFlashSale;
+
+            let offers = await Offers.find(query)
+                .populate('createdBy', 'brandname brandlogo')
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit);
+
+            let total = await Offers.countDocuments(query);
+
+            return sendResponse(req, res, 200, 1, { keyword: "success", components: {} }, {
+                offers,
+                total,
+                page,
+                totalPages: Math.ceil(total / limit)
+            });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    get_offer_by_id: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            }).populate('createdBy', 'brandname brandlogo')
+                .populate('specificCustomers', 'name email instaId');
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            return sendResponse(req, res, 200, 1, { keyword: "success", components: {} }, offer);
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    update_offer: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId, ...updateData } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            });
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            if (updateData.startDate && updateData.endDate && updateData.startDate >= updateData.endDate) {
+                return sendResponse(req, res, 200, 0, { keyword: "invalid_date_range", components: {} });
+            }
+
+            let updatedOffer = await Offers.findByIdAndUpdate(
+                offerId,
+                updateData,
+                { new: true }
+            ).populate('createdBy', 'brandname brandlogo');
+
+            return sendResponse(req, res, 200, 1, { keyword: "offer_updated_successfully", components: {} }, updatedOffer);
+        } catch (e) {
+            if (e.code === 11000) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_code_already_exists", components: {} });
+            }
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    delete_offer: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            });
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            await Offers.findByIdAndUpdate(offerId, {
+                isDeleted: true,
+                isActive: false,
+                status: 'cancelled'
+            });
+
+            return sendResponse(req, res, 200, 1, { keyword: "offer_deleted_successfully", components: {} });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    activate_offer: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            });
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            let now = new Date();
+            if (offer.endDate < now) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_expired", components: {} });
+            }
+
+            await Offers.findByIdAndUpdate(offerId, {
+                status: 'active',
+                isActive: true
+            });
+
+            return sendResponse(req, res, 200, 1, { keyword: "offer_activated_successfully", components: {} });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    deactivate_offer: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            });
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            await Offers.findByIdAndUpdate(offerId, {
+                status: 'paused',
+                isActive: false
+            });
+
+            return sendResponse(req, res, 200, 1, { keyword: "offer_deactivated_successfully", components: {} });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    get_offer_usage: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId, page = 1, limit = 10 } = req.body;
+
+            let offer = await Offers.findOne({
+                _id: offerId,
+                createdBy: admin_id,
+                isDeleted: false
+            });
+
+            if (!offer) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            let totalUsage = offer.usageHistory.length;
+            let usageHistory = offer.usageHistory
+                .sort((a, b) => new Date(b.usedAt) - new Date(a.usedAt))
+                .slice((page - 1) * limit, page * limit);
+
+            return sendResponse(req, res, 200, 1, { keyword: "success", components: {} }, {
+                usageHistory,
+                totalUsage,
+                currentUsageCount: offer.currentUsageCount,
+                totalUsageLimit: offer.totalUsageLimit,
+                page,
+                totalPages: Math.ceil(totalUsage / limit)
+            });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
+        }
+    },
+
+    get_offer_analytics: async (req, res) => {
+        try {
+            let { admin_id } = req.loginUser;
+            let { offerId, startDate, endDate } = req.body;
+
+            let query = {
+                createdBy: admin_id,
+                isDeleted: false
+            };
+
+            if (offerId) {
+                query._id = offerId;
+            }
+
+            if (startDate && endDate) {
+                query.createdAt = {
+                    $gte: new Date(startDate),
+                    $lte: new Date(endDate)
+                };
+            }
+
+            let offers = await Offers.find(query);
+
+            if (offerId && offers.length === 0) {
+                return sendResponse(req, res, 200, 0, { keyword: "offer_not_found", components: {} });
+            }
+
+            let analytics = {
+                totalOffers: offers.length,
+                activeOffers: offers.filter(o => o.status === 'active').length,
+                expiredOffers: offers.filter(o => o.status === 'expired').length,
+                totalViews: offers.reduce((sum, o) => sum + o.viewCount, 0),
+                totalClicks: offers.reduce((sum, o) => sum + o.clickCount, 0),
+                totalShares: offers.reduce((sum, o) => sum + o.shareCount, 0),
+                totalUsage: offers.reduce((sum, o) => sum + o.currentUsageCount, 0),
+                totalDiscountGiven: 0,
+                averageConversionRate: 0
+            };
+
+            offers.forEach(offer => {
+                offer.usageHistory.forEach(usage => {
+                    analytics.totalDiscountGiven += usage.discountApplied || 0;
+                });
+            });
+
+            if (analytics.totalViews > 0) {
+                analytics.averageConversionRate = ((analytics.totalUsage / analytics.totalViews) * 100).toFixed(2);
+            }
+
+            let offerBreakdown = offers.map(offer => ({
+                offerId: offer._id,
+                title: offer.title,
+                status: offer.status,
+                viewCount: offer.viewCount,
+                clickCount: offer.clickCount,
+                usageCount: offer.currentUsageCount,
+                conversionRate: offer.conversionRate
+            }));
+
+            return sendResponse(req, res, 200, 1, { keyword: "success", components: {} }, {
+                analytics,
+                offerBreakdown
+            });
+        } catch (e) {
+            return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
         }
     }
 };

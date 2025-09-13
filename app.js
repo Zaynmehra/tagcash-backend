@@ -76,6 +76,11 @@ let category_route = require('./routes/v1/category.route');
 let challenge_route = require('./routes/v1/challenge.route');
 let admin_route = require('./routes/v1/admin.route');
 let open_route = require('./routes/v1/open.route');
+let communication_route = require('./routes/v1/communication.route');
+let rate_route = require('./routes/v1/rateClassification.route');
+
+
+
 
 app.use('/api/v1/auth', auth_route);
 app.use('/api/v1/customer', customer_route);
@@ -85,6 +90,10 @@ app.use('/api/v1/category', category_route);
 app.use('/api/v1/challenge', challenge_route);
 app.use('/api/v1/admin', admin_route);
 app.use('/api/v1/open', open_route);
+app.use('/api/v1/communication', communication_route);
+app.use('/api/v1/rate', rate_route);
+
+
 
 app.use("*", (req, res) => {
     res.status(404);
