@@ -156,4 +156,11 @@ router.get('/profile',
     customerController.getProfile
 );
 
+router.get('/reEvaluateProfile', 
+    checkApiKey, 
+    checkTokenCustomer, 
+    decryption,
+    customerController.reEvaluateProfile
+);
+
 module.exports = router;

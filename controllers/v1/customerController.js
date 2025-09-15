@@ -295,35 +295,28 @@ const customerController = {
                 isDeleted: false
             });
 
-            // if (customer) {
-            //     return res.status(409).json({
-            //         success: false,
-            //         message: 'Customer already exists with this email, phone number or instaId'
-            //     });
-
-            // } else {
-                const  instaDetails = await getInstagramFollowers(instaId.trim());
-                console.log({instaDetails})
-                const customerData = {
-                    name: name.trim(),
-                    email: email.toLowerCase().trim(),
-                    profilePicture: picture || undefined,
-                    lastActive: new Date(),
-                    instaId: instaId.trim() ,
-                    upiId: upiId ? upiId.trim() : undefined,
-                    isEmailVerified: true,
-                    accountStatus: "active",
-                    authProvider : "google",
-                    instaDetails,
-                };
-                if (phone) customerData.phone = phone.trim();
-                if (deviceName) customerData.deviceName = deviceName;
-                if (deviceType) customerData.deviceType = deviceType;
-                if (deviceToken) customerData.deviceToken = deviceToken;
-                customer = new Customer(customerData);
-                const deviceInfo = getDeviceInfo(req);
-                customer.loginHistory.push(deviceInfo);
-                await customer.save();
+            const instaDetails = await getInstagramFollowers(instaId.trim());
+            console.log({ instaDetails })
+            const customerData = {
+                name: name.trim(),
+                email: email.toLowerCase().trim(),
+                profilePicture: picture || undefined,
+                lastActive: new Date(),
+                instaId: instaId.trim(),
+                upiId: upiId ? upiId.trim() : undefined,
+                isEmailVerified: true,
+                accountStatus: "active",
+                authProvider: "google",
+                instaDetails,
+            };
+            if (phone) customerData.phone = phone.trim();
+            if (deviceName) customerData.deviceName = deviceName;
+            if (deviceType) customerData.deviceType = deviceType;
+            if (deviceToken) customerData.deviceToken = deviceToken;
+            customer = new Customer(customerData);
+            const deviceInfo = getDeviceInfo(req);
+            customer.loginHistory.push(deviceInfo);
+            await customer.save();
             // }
             const { accessToken, refreshToken } = generateTokens(customer._id);
 
@@ -695,9 +688,9 @@ const customerController = {
                     message: "Email is required",
                 });
             }
-            console.log({email})
-            const customer = await Customer.findOne({email});
-            console.log({customer})
+            console.log({ email })
+            const customer = await Customer.findOne({ email });
+            console.log({ customer })
             if (!customer) {
                 return res.status(200).json({
                     success: true,
@@ -706,7 +699,7 @@ const customerController = {
             }
 
             const response = await sendPasswordResetOTPEmail(email);
-            console.log({response})
+            console.log({ response })
             customer.emailOtp = response.otp;
             customer.emailOtpExpiry = new Date(Date.now() + 10 * 60 * 60 * 1000);
             await customer.save();
@@ -953,7 +946,7 @@ const customerController = {
         try {
             const { email, otp } = req.body;
 
-            console.log({email, otp})
+            console.log({ email, otp })
 
             if (!email || !otp) {
                 return res.status(400).json({
@@ -962,9 +955,9 @@ const customerController = {
                 });
             }
 
-            const customer = await Customer.findOne({email}).select('+emailOtp +emailOtpExpiry');
+            const customer = await Customer.findOne({ email }).select('+emailOtp +emailOtpExpiry');
 
-            console.log({customer})
+            console.log({ customer })
 
             if (!customer) {
                 return res.status(401).json({
@@ -974,10 +967,10 @@ const customerController = {
             }
 
             console.log({
-               emailOtp : customer.emailOtp,
-               emailOtpExpiry : customer.emailOtpExpiry,
-               otp : otp,
-               date : Date.now(),
+                emailOtp: customer.emailOtp,
+                emailOtpExpiry: customer.emailOtpExpiry,
+                otp: otp,
+                date: Date.now(),
             })
 
             const isEmailOtpValid = (otp == customer.emailOtp && Date.now() < customer.emailOtpExpiry);
@@ -1041,6 +1034,58 @@ const customerController = {
 
         } catch (error) {
             console.error('Get profile error:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    },
+
+    reEvaluateProfile: async (req, res) => {
+        try {
+            const customerId = req.loginUser.id;
+            const customer = await Customer.findById(customerId);
+            if (!customer || customer.isDeleted) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Customer not found'
+                });
+            }
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            if (customer.lastReEvaluation && customer.lastReEvaluation > thirtyDaysAgo) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Profile was re-evaluated within the last 30 days'
+                });
+            }
+            const instaDetails = await getInstagramFollowers(customer.instaId.trim());
+            const updatedCustomer = await Customer.findByIdAndUpdate(
+                customerId,
+                {
+                    $set: {
+                        'instaDetails.followersCount': instaDetails.followersCount,
+                        'instaDetails.avgViews': instaDetails.avgViews,
+                        'instaDetails.avgLikes': instaDetails.avgLikes,
+                        'instaDetails.avgComments': instaDetails.avgComments,
+                        'instaDetails.followingCount': instaDetails.followingCount,
+                        'instaDetails.profile_pic_url': instaDetails.profile_pic_url,
+                        'instaDetails.full_name': instaDetails.full_name,
+                        'instaDetails.postsCount': instaDetails.postsCount,
+                        'instaDetails.memberType': instaDetails.memberType,
+                        lastReEvaluation: new Date()
+                    }
+                },
+                { new: true, runValidators: true }
+            ).select('-refreshToken -password');
+            res.status(200).json({
+                success: true,
+                message: 'Profile re-evaluated successfully',
+                data: { customer: updatedCustomer }
+            });
+        } catch (error) {
+            console.error('Re-evaluation error:', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'

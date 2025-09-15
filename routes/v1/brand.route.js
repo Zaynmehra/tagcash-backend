@@ -14,6 +14,7 @@ router.post("/registerBrand", checkApiKey, decryption, validateJoi(Joi.object({
   managername: Joi.string().required(),
   instaId: Joi.string().optional(),
   brandurl: Joi.string().optional(),
+  paymentType : Joi.string().optional(),
 })), brandController.register_brand);
 
 router.post("/verifyRegistrationOTP", checkApiKey, decryption, validateJoi(Joi.object({

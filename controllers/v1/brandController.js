@@ -22,7 +22,7 @@ const razorpay = new Razorpay({
 let brand_controller = {
     register_brand: async (req, res) => {
         try {
-            const { brandname, email, password, phone, managername, brandurl, category, subcategory, instaId } = req.body;
+            const { brandname, paymentType, email, password, phone, managername, brandurl, category, subcategory, instaId } = req.body;
 
             const existingBrand = await Brand.findOne({
                 $or: [{ email: email }, { phone: phone }],
@@ -44,6 +44,7 @@ let brand_controller = {
                     existingBrand.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
                     existingBrand.isVerified = false;
                     existingBrand.isActive = false;
+                    existingBrand.paymentType = paymentType;
 
                     const result = await existingBrand.save();
                     if (!result) {
@@ -70,7 +71,8 @@ let brand_controller = {
                 otp: response.otp,
                 otpExpires: new Date(Date.now() + 10 * 60 * 1000),
                 isVerified: false,
-                isActive: false
+                isActive: false,
+                paymentType: paymentType
             });
 
             const result = await newBrand.save();
@@ -735,6 +737,9 @@ let brand_controller = {
             }
 
             let updateFields = {};
+
+            console.log({ engagementMilestones: req.body.engagementMilestones })
+
             if (req.body.brandname) updateFields.brandname = req.body.brandname;
             if (req.body.managername) updateFields.managername = req.body.managername;
             if (req.body.email) updateFields.email = req.body.email;
@@ -745,6 +750,9 @@ let brand_controller = {
             if (req.body.about) updateFields.about = req.body.about;
             if (req.body.address && Array.isArray(req.body.address) && req.body.address.length > 0) {
                 if (req.body.address) updateFields['address'] = req.body.address;
+            }
+            if (req.body.engagementMilestones && Array.isArray(req.body.engagementMilestones) && req.body.engagementMilestones.length > 0) {
+                if (req.body.engagementMilestones) updateFields['engagementMilestones'] = req.body.engagementMilestones;
             }
             if (req.body.location) {
                 if (req.body.location.lat) updateFields['location.lat'] = req.body.location.lat;
@@ -1611,11 +1619,12 @@ let brand_controller = {
         try {
             const { admin_id: brandId } = req.loginUser;
             const { billId } = req.body;
-            const bill = await Bill.findById(billId);
+
+            const bill = await Bill.findById(billId).populate('brandId');
             if (!bill) {
                 return sendResponse(req, res, 404, 0, { keyword: "Bill not found", components: {} });
             }
-            if (bill.brandId.toString() !== brandId.toString()) {
+            if (bill.brandId._id.toString() !== brandId.toString()) {
                 return sendResponse(req, res, 401, 0, { keyword: "Not Authorized To modify this Bill", components: {} });
             }
 
@@ -1635,6 +1644,41 @@ let brand_controller = {
             }
 
             const metrics = await getInstagramPostMetrics(bill.instaContentUrl);
+            let refundAmount = 0;
+
+            const brand = bill.brandId;
+            const billAmount = bill.amount || 0;
+            const actualViews = metrics.viewsCount || 0;
+
+            if (brand.engagementMilestones && brand.engagementMilestones.length > 0) {
+                const milestone = brand.engagementMilestones.find(m =>
+                    billAmount >= (m.amount || 0) &&
+                    billAmount <= (m.to || Infinity)
+                );
+
+                if (milestone && milestone.views > 0) {
+                    const requiredViews = milestone.views;
+                    if (actualViews < requiredViews) {
+                        const viewsShortfall = requiredViews - actualViews;
+                        const shortfallPercentage = (viewsShortfall / requiredViews) * 100;
+                        refundAmount = (billAmount * shortfallPercentage) / 100;
+                    }
+                }
+            } else if (brand.viewAndRefund) {
+                const { minimumViews = 0, refundPercentage = 0, upToRefundAmount = 0 } = brand.viewAndRefund;
+
+                if (minimumViews > 0 && actualViews < minimumViews) {
+                    const viewsShortfall = minimumViews - actualViews;
+                    const shortfallPercentage = (viewsShortfall / minimumViews) * 100;
+                    const calculatedRefund = (billAmount * refundPercentage * shortfallPercentage) / 10000;
+
+                    refundAmount = upToRefundAmount > 0 ?
+                        Math.min(calculatedRefund, upToRefundAmount) :
+                        calculatedRefund;
+                }
+            }
+
+            refundAmount = Math.max(0, Math.round(refundAmount * 100) / 100);
 
             const updatedBill = await Bill.findByIdAndUpdate(
                 billId,
@@ -1648,7 +1692,8 @@ let brand_controller = {
                             playCount: metrics.playCount,
                             source: 'instagram-api'
                         }),
-                        lastActive: new Date()
+                        lastActive: new Date(),
+                        refundAmount,
                     }
                 },
                 { new: true }
@@ -1663,6 +1708,11 @@ let brand_controller = {
                         comments: metrics.commentsCount,
                         views: metrics.viewsCount,
                         playCount: metrics.playCount
+                    },
+                    refundCalculation: {
+                        calculatedRefund: refundAmount,
+                        actualViews: actualViews,
+                        usedMilestone: brand.engagementMilestones?.length > 0
                     }
                 }
             });

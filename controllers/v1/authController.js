@@ -1,6 +1,8 @@
 const Admin = require('../../models/v1/Admin');
 const Customer = require('../../models/v1/Customer');
 const Bill = require('../../models/v1/Bill');
+const Brand = require('../../models/v1/Brand');
+const Category = require('../../models/v1/Category');
 const { sendResponse } = require('../../middleware');
 const common = require('../../utils/common');
 const moment = require('moment');
@@ -526,6 +528,19 @@ let auth_controller = {
                 ...dateQuery
             });
 
+            const activeCustomers = await Customer.countDocuments({
+                isDeleted: false,
+                isActive: true,
+                isLocked: false,
+                ...dateQuery
+            });
+
+            const verifiedCustomers = await Customer.countDocuments({
+                isDeleted: false,
+                isVerified: true,
+                ...dateQuery
+            });
+
             const Brand = require('../../models/v1/Brand');
             const totalBrands = await Brand.countDocuments({
                 isDeleted: false,
@@ -533,15 +548,279 @@ let auth_controller = {
                 isLocked: false,
                 ...dateQuery
             });
+
+            const activeBrands = await Brand.countDocuments({
+                isDeleted: false,
+                isActive: true,
+                isLocked: false,
+                ...dateQuery
+            });
+
+            const verifiedBrands = await Brand.countDocuments({
+                isDeleted: false,
+                isVerified: true,
+                ...dateQuery
+            });
+
             const totalBills = await Bill.countDocuments({
                 isDeleted: false,
                 ...dateQuery
             });
 
+            const approvedBills = await Bill.countDocuments({
+                isDeleted: false,
+                status: 'approved',
+                ...dateQuery
+            });
+
+            const pendingBills = await Bill.countDocuments({
+                isDeleted: false,
+                status: 'pending for approval',
+                ...dateQuery
+            });
+
+            const uploadContentBills = await Bill.countDocuments({
+                isDeleted: false,
+                status: 'upload content',
+                ...dateQuery
+            });
+
+            const rejectedBills = await Bill.countDocuments({
+                isDeleted: false,
+                status: 'rejected',
+                ...dateQuery
+            });
+
+            const verifiedPayments = await Bill.countDocuments({
+                isDeleted: false,
+                paymentStatus: 'verified',
+                ...dateQuery
+            });
+
+            const pendingPayments = await Bill.countDocuments({
+                isDeleted: false,
+                paymentStatus: 'pending',
+                ...dateQuery
+            });
+
+            const failedPayments = await Bill.countDocuments({
+                isDeleted: false,
+                paymentStatus: 'failed',
+                ...dateQuery
+            });
+
+            const totalRevenue = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        paymentStatus: 'verified',
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalAmount: { $sum: '$billAmount' }
+                    }
+                }
+            ]);
+
+            const totalRefunds = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        refundStatus: 'success',
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRefundAmount: { $sum: '$refundAmount' }
+                    }
+                }
+            ]);
+
+            const pendingRefunds = await Bill.countDocuments({
+                isDeleted: false,
+                refundStatus: 'pending',
+                ...dateQuery
+            });
+
+            const processingRefunds = await Bill.countDocuments({
+                isDeleted: false,
+                refundStatus: 'processing',
+                ...dateQuery
+            });
+
+            const successRefunds = await Bill.countDocuments({
+                isDeleted: false,
+                refundStatus: 'success',
+                ...dateQuery
+            });
+
+            const contentTypeStats = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$contentType',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            const paymentTypeStats = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$paymentType',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            const memberTypeStats = await Customer.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$instaDetails.memberType',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            const topBrandsByBills = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$brandId',
+                        totalBills: { $sum: 1 },
+                        totalAmount: { $sum: '$billAmount' }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'newbrands',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'brand'
+                    }
+                },
+                {
+                    $unwind: '$brand'
+                },
+                {
+                    $sort: { totalBills: -1 }
+                },
+                {
+                    $limit: 10
+                },
+                {
+                    $project: {
+                        brandName: '$brand.brandname',
+                        totalBills: 1,
+                        totalAmount: 1
+                    }
+                }
+            ]);
+
+            const topInfluencersByBills = await Bill.aggregate([
+                {
+                    $match: {
+                        isDeleted: false,
+                        ...dateQuery
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$customerId',
+                        totalBills: { $sum: 1 },
+                        totalAmount: { $sum: '$billAmount' }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'customers',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'customer'
+                    }
+                },
+                {
+                    $unwind: '$customer'
+                },
+                {
+                    $sort: { totalBills: -1 }
+                },
+                {
+                    $limit: 10
+                },
+                {
+                    $project: {
+                        customerName: '$customer.name',
+                        instaId: '$customer.instaId',
+                        totalBills: 1,
+                        totalAmount: 1
+                    }
+                }
+            ]);
+
             const response = {
-                totalCustomers,
-                totalBrands,
-                totalBills,
+                overview: {
+                    totalCustomers,
+                    activeCustomers,
+                    verifiedCustomers,
+                    totalBrands,
+                    activeBrands,
+                    verifiedBrands,
+                    totalBills
+                },
+                bills: {
+                    total: totalBills,
+                    approved: approvedBills,
+                    pending: pendingBills,
+                    uploadContent: uploadContentBills,
+                    rejected: rejectedBills
+                },
+                payments: {
+                    verified: verifiedPayments,
+                    pending: pendingPayments,
+                    failed: failedPayments,
+                    totalRevenue: totalRevenue[0]?.totalAmount || 0
+                },
+                refunds: {
+                    pending: pendingRefunds,
+                    processing: processingRefunds,
+                    success: successRefunds,
+                    totalRefundAmount: totalRefunds[0]?.totalRefundAmount || 0
+                },
+                analytics: {
+                    contentTypeStats,
+                    paymentTypeStats,
+                    memberTypeStats,
+                    topBrandsByBills,
+                    topInfluencersByBills
+                }
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);

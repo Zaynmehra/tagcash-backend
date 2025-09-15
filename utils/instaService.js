@@ -232,18 +232,20 @@ const getInstagramFollowers = async (username) => {
         };
 
         const response = await axios.request(options);
+        const userAnalytics = await getInstagramAnalytics(username);
 
         if (response.data) {
             const userData = response.data;
-            
-            // Extract the required fields from the response
             const followersCount = userData.follower_count || 0;
             const followingCount = userData.following_count || 0;
             const postsCount = userData.media_count || 0;
             const profilePicUrl = userData?.hd_profile_pic_url_info?.url || '';
             const fullName = userData.full_name || '';
-            
-            // Calculate member type
+
+            const avgLikes = userAnalytics.avgLikes || 0
+            const avgComments = userAnalytics.avgComments || 0
+            const avgViews = userAnalytics.avgViews || 0
+
             const memberType = getMemberType(followersCount);
 
             return {
@@ -252,7 +254,10 @@ const getInstagramFollowers = async (username) => {
                 postsCount: postsCount,
                 profile_pic_url: profilePicUrl,
                 full_name: fullName,
-                memberType: memberType
+                memberType: memberType,
+                avgLikes: avgLikes,
+                avgComments: avgComments,
+                avgViews: avgViews
             };
         } else {
             return {
@@ -327,6 +332,104 @@ const getInstagramPostMetrics = async (reelUrl) => {
     }
 };
 
+
+  const getInstagramAnalytics = async (username) => {
+  try {
+    const response = await axios.post(
+      'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_posts.php',
+      `username=${username}`,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY
+        }
+      }
+    );
+
+    const jsonData = response.data;
+    const posts = jsonData.posts;
+    
+    if (!posts || posts.length === 0) {
+      return {
+        username: username,
+        totalPosts: 0,
+        avgLikes: 0,
+        avgComments: 0,
+        avgViews: null,
+        totalLikes: 0,
+        totalComments: 0,
+        totalViews: null,
+        postsWithLikes: 0,
+        postsWithComments: 0,
+        postsWithViews: 0,
+        error: "No posts found for this user"
+      };
+    }
+    
+    let totalLikes = 0;
+    let totalComments = 0;
+    let totalViews = 0;
+    let postsWithViews = 0;
+    let postsWithLikes = 0;
+    let postsWithComments = 0;
+    
+    // Calculate metrics from posts
+    posts.forEach(post => {
+      const node = post.node;
+      
+      if (node.like_count !== null && node.like_count !== undefined) {
+        totalLikes += node.like_count;
+        postsWithLikes++;
+      }
+      
+      if (node.comment_count !== null && node.comment_count !== undefined) {
+        totalComments += node.comment_count;
+        postsWithComments++;
+      }
+      
+      if (node.view_count !== null && node.view_count !== undefined) {
+        totalViews += node.view_count;
+        postsWithViews++;
+      }
+    });
+    
+    const avgLikes = postsWithLikes > 0 ? (totalLikes / postsWithLikes) : 0;
+    const avgComments = postsWithComments > 0 ? (totalComments / postsWithComments) : 0;
+    const avgViews = postsWithViews > 0 ? (totalViews / postsWithViews) : null;
+    
+    return {
+      username: username,
+      totalPosts: posts.length,
+      avgLikes: Number(avgLikes.toFixed(2)),
+      avgComments: Number(avgComments.toFixed(2)),
+      avgViews: avgViews ? Number(avgViews.toFixed(2)) : null,
+      totalLikes: totalLikes,
+      totalComments: totalComments,
+      totalViews: postsWithViews > 0 ? totalViews : null,
+      postsWithLikes: postsWithLikes,
+      postsWithComments: postsWithComments,
+      postsWithViews: postsWithViews
+    };
+    
+  } catch (error) {
+    return {
+      username: username,
+      error: `Failed to fetch data: ${error.message}`,
+      totalPosts: 0,
+      avgLikes: 0,
+      avgComments: 0,
+      avgViews: null,
+      totalLikes: 0,
+      totalComments: 0,
+      totalViews: null,
+      postsWithLikes: 0,
+      postsWithComments: 0,
+      postsWithViews: 0
+    };
+  }
+}
+
 module.exports = {
-    getInstagramFollowers, getMemberType, getInstagramPostMetrics
+    getInstagramFollowers, getMemberType, getInstagramPostMetrics, getInstagramAnalytics
 };

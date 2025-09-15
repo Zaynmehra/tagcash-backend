@@ -4,6 +4,7 @@ const { sendResponse } = require('../../middleware');
 const common = require('../../utils/common');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const RateClassification = require('../../models/v1/RateClassification');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -298,9 +299,11 @@ let billing_controller = {
             if (search) {
                 filteredBills = bills.filter(bill => {
                     const customerName = bill.customerId ? bill.customerId.name : '';
+                    const customerId = bill.customerId ? bill.customerId._id.toString() : '';
                     return customerName.toLowerCase().includes(search.toLowerCase()) ||
                         (bill.instaId && bill.instaId.toLowerCase().includes(search.toLowerCase())) ||
-                        (bill.billNo && bill.billNo.toLowerCase().includes(search.toLowerCase()));
+                        (bill.billNo && bill.billNo.toLowerCase().includes(search.toLowerCase())) ||
+                        customerId.toLowerCase().includes(search.toLowerCase());
                 });
             }
 
@@ -809,6 +812,14 @@ let billing_controller = {
             
             if (contentType) {
                 updateFields.contentType = contentType;
+            }
+
+            if( contentType === "story" ){
+
+                const refundRate = await RateClassification.find({})
+                const refundAmount = refundRate[0];
+                updateFields.refundAmount = refundAmount.range[0].amount;
+
             }
 
             const updatedBill = await Bill.findByIdAndUpdate(

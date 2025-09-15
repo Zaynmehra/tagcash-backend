@@ -114,6 +114,18 @@ const brandSchema = new mongoose.Schema({
     type: String
   },
 
+  engagementMilestones:[{ 
+    amount: { 
+      type: Number, min: 0
+    }, 
+    views: { 
+      type: Number, min: 0
+    }, 
+    to: { 
+      type: Number, min: 0
+    } 
+  }],
+
   rateOfTwo: {
     type: Number,
     min: 0,

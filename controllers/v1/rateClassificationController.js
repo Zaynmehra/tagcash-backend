@@ -6,14 +6,12 @@ let rate_classification_controller = {
     create_or_update_rate: async (req, res) => {
         const { brandId, contentType, range } = req.body;
         try {
-            // Validate range data
             if (!range || !Array.isArray(range) || range.length === 0) {
                 return sendResponse(req, res, 200, 0, { keyword: "range_data_required", components: {} });
             }
 
-            // Validate range structure
             for (let r of range) {
-                if (!r.from || !r.to || !r.amount) {
+                if (!(r.from === 0) || !r.to || !r.amount) {
                     return sendResponse(req, res, 200, 0, { keyword: "invalid_range_structure", components: {} });
                 }
                 if (r.from >= r.to) {
@@ -21,7 +19,6 @@ let rate_classification_controller = {
                 }
             }
 
-            // If brandId is provided, verify it exists
             if (brandId) {
                 const brand = await Brand.findById(brandId);
                 if (!brand) {

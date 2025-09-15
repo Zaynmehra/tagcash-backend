@@ -191,6 +191,10 @@ const customerSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  lastReEvaluation: {
+    type: Date,
+    default: Date.now
+  },
   loginHistory: [{
     deviceInfo: String,
     ipAddress: String,
