@@ -1688,6 +1688,7 @@ let brand_controller = {
                         }),
                         lastActive: new Date(),
                         refundAmount,
+                        refundStatus: "processing"
                     }
                 },
                 { new: true }

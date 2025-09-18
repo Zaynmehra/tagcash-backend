@@ -221,6 +221,9 @@ router.post("/updateContent", checkApiKey, checkTokenBrand, decryption, validate
   views: Joi.number().optional(),
   metaFetch: Joi.string().optional(),
   brandStatusDate: Joi.string().optional(),
+  isInstPostViewed: Joi.boolean().optional(),
+  instPostVerifyStatus: Joi.string().optional(),
+
 })), billingController.update_content);
 
 router.post("/fetchMetadataBrand", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({

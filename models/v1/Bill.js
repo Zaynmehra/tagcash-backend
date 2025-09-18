@@ -11,19 +11,32 @@ const billSchema = new mongoose.Schema({
     ref: 'newBrand',
     required: [true, 'Brand ID is required']
   },
+
   paymentType: {
     type: String,
     enum: ['upload bill', 'pay now'],
     required: [true, 'Payment type is required']
   },
+
   instaId: {
     type: String,
     trim: true
   },
+
+  isInstPostViewed: {
+    type: Boolean
+  },
+
+  instPostVerifyStatus: {
+    type: String,
+    enum: ['Verified', 'Rejected'],
+  },
+
   billNo: {
     type: String,
     trim: true
   },
+
   billAmount: {
     type: Number,
     required: [true, 'Bill amount is required']

@@ -18,7 +18,7 @@ const challengeSchema = new mongoose.Schema({
     trim: true,
     maxlength: 150
   },
-  createdBy: {
+  brandId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'newBrand',
     required: [true, 'Brand is required']

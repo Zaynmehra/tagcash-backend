@@ -395,6 +395,8 @@ let billing_controller = {
                 views: bill.views,
                 metaFetch: bill.metaFetch,
                 brandVerified: bill.brandVerified,
+                isInstPostViewed: bill.isInstPostViewed,
+                instPostVerifyStatus: bill.instPostVerifyStatus,
 
             };
 
@@ -419,7 +421,7 @@ let billing_controller = {
             if (!existingBill) {
                 return sendResponse(req, res, 200, 0, { keyword: "bill_not_found", components: {} });
             }
-            await Bill.findByIdAndUpdate(billingId, { instaContentUrl: instaUrl, refundStatus: "processing" });
+            await Bill.findByIdAndUpdate(billingId, { instaContentUrl: instaUrl });
             return sendResponse(req, res, 200, 1, { keyword: "billing_updated", components: {} });
         } catch (err) {
             console.error("Error updating billing:", err);
@@ -454,7 +456,7 @@ let billing_controller = {
 
 
     update_content: async (req, res) => {
-        const { billId, status, instaContentUrl, refundClaimDate, refundAmount, refundStatus, brandRefundStatus, brandRefundDate, refundDate, likes, comments, views, metaFetch, brandStatusDate } = req.body;
+        const { billId, status, instaContentUrl, refundClaimDate, refundAmount, refundStatus, brandRefundStatus, brandRefundDate, refundDate, likes, comments, views, metaFetch, brandStatusDate, instPostVerifyStatus, isInstPostViewed } = req.body;
 
         try {
             const existingBill = await Bill.findOne({
@@ -481,6 +483,8 @@ let billing_controller = {
             if (views) updateFields.views = views;
             if (metaFetch) updateFields.metaFetch = metaFetch;
             if (brandStatusDate) updateFields.brandStatusDate = brandStatusDate;
+            if (isInstPostViewed) updateFields.isInstPostViewed = isInstPostViewed;
+            if (instPostVerifyStatus) updateFields.instPostVerifyStatus = instPostVerifyStatus;
 
             if (Object.keys(updateFields).length > 0) {
                 await Bill.findByIdAndUpdate(billId, updateFields);
@@ -623,6 +627,7 @@ let billing_controller = {
             return sendResponse(req, res, 500, 0, { keyword: "payment_verification_error", components: {} });
         }
     },
+    
     get_bills: async (req, res) => {
         const { id } = req.loginUser;
         const { page = 1, limit = 10, status, paymentType } = req.query;
@@ -645,15 +650,25 @@ let billing_controller = {
                 query.paymentType = paymentType;
             }
 
-            const [bills, totalCount] = await Promise.all([
+            const [bills, totalCount, customer] = await Promise.all([
                 Bill.find(query)
                     .populate('brandId', 'brandname brandlogo')
                     .sort({ createdAt: -1 })
                     .skip(skip)
                     .limit(limitNumber)
                     .lean(),
-                Bill.countDocuments(query)
+                Bill.countDocuments(query),
+                Customer.findById(id).select('brandVerified').lean()
             ]);
+
+            const brandVerifiedIds = customer?.brandVerified || [];
+
+            const billsWithVerification = bills.map(bill => ({
+                ...bill,
+                isBrandVerified: brandVerifiedIds.some(brandId =>
+                    brandId.toString() === bill.brandId._id.toString()
+                )
+            }));
 
             const totalPages = Math.ceil(totalCount / limitNumber);
             const hasNextPage = pageNumber < totalPages;
@@ -681,7 +696,7 @@ let billing_controller = {
             return sendResponse(req, res, 200, 1, {
                 keyword: "bills_retrieved",
             }, {
-                bills,
+                bills: billsWithVerification,
                 pagination
             });
         } catch (err) {
@@ -850,7 +865,10 @@ let billing_controller = {
             console.error("Error uploading content:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_upload_content", components: {} });
         }
-    }
+    },
+
+
+
 };
 
 module.exports = billing_controller;
