@@ -1115,23 +1115,31 @@ const customerController = {
         }
     },
 
-
     search_brand: async (req, res) => {
         try {
-            const { brandName } = req.params;
+            const { brandname } = req.params;
 
-            const brands = await Brand.find({ brandname : brandName }).select('brandName brandlogo')
+            let brands;
 
-            if (!brands) {
+            if (!brandname || brandname.trim() === '') {
+                brands = await Brand.find({}).select('brandname brandlogo').limit(50);
+            } else {
+                const searchRegex = new RegExp(brandname.trim(), 'i');
+                brands = await Brand.find({
+                    brandname: { $regex: searchRegex }
+                }).select('brandname brandlogo').limit(50);
+            }
+
+            if (!brands || brands.length === 0) {
                 return sendResponse(req, res, 200, 0, {
                     keyword: "no_data_found",
                     components: {}
-                },{ brands: [] });
+                }, { brands: [] });
             }
 
             return sendResponse(req, res, 200, 1, {
                 keyword: "success"
-            }, brands);
+            }, { brands });
 
         } catch (err) {
             console.error("Error fetching brand offers and challenges:", err);
