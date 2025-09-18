@@ -1637,13 +1637,13 @@ let brand_controller = {
                 });
             }
 
-            const urlPattern = /^https?:\/\/(www\.)?instagram\.com\/(p|reels)\/[A-Za-z0-9_-]+\/?$/;
-            if (!urlPattern.test(bill.instaContentUrl)) {
-                return sendResponse(req, res, 400, 0, {
-                    keyword: "Invalid Instagram URL format",
-                    components: {}
-                });
-            }
+            // const urlPattern = /^https?:\/\/(www\.)?instagram\.com\/(p|reels)\/[A-Za-z0-9_-]+\/?$/;
+            // if (!urlPattern.test(bill.instaContentUrl)) {
+            //     return sendResponse(req, res, 400, 0, {
+            //         keyword: "Invalid Instagram URL format",
+            //         components: {}
+            //     });
+            // }
 
             const metrics = await getInstagramPostMetrics(bill.instaContentUrl);
 
