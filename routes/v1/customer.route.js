@@ -180,9 +180,9 @@ router.get('/getBrands-offers',
 );
 
 router.get('/search-brand/:brandname?', 
-    // checkApiKey, 
-    // checkTokenCustomer, 
-    // decryption,
+    checkApiKey, 
+    checkTokenCustomer, 
+    decryption,
     customerController.search_brand
 );
 
