@@ -114,16 +114,16 @@ const brandSchema = new mongoose.Schema({
     type: String
   },
 
-  engagementMilestones:[{ 
-    amount: { 
+  engagementMilestones: [{
+    amount: {
       type: Number, min: 0
-    }, 
-    views: { 
+    },
+    views: {
       type: Number, min: 0
-    }, 
-    to: { 
+    },
+    to: {
       type: Number, min: 0
-    } 
+    }
   }],
 
   rateOfTwo: {
@@ -137,6 +137,8 @@ const brandSchema = new mongoose.Schema({
     enum: ['Escrow', 'Prepaid'],
     default: 'Escrow',
   },
+
+
 
   balance: {
     type: Number,
@@ -179,6 +181,12 @@ const brandSchema = new mongoose.Schema({
       trim: true,
       maxlength: 1000
     },
+    refundType: {
+      type: String,
+      enum: ['minimumView', 'mileStone'],
+      default: 'minimumView',
+    },
+
     refundPercentage: {
       type: Number,
       min: 0,
@@ -187,8 +195,10 @@ const brandSchema = new mongoose.Schema({
     refundDays: {
       type: Number,
       min: 0,
-      default: 7
+      default: 5,
+
     },
+
     upToRefundAmount: {
       type: Number,
       min: 0,
@@ -202,6 +212,7 @@ const brandSchema = new mongoose.Schema({
       default: 0,
       description: 'Minimum views required on influencer posts'
     },
+
   },
   procedure: {
     type: String,

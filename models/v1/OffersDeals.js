@@ -30,7 +30,7 @@ const offerSchema = new mongoose.Schema({
   },
   offerType: {
     type: String,
-    enum: ['percentage', 'fixed_amount', 'buy_one_get_one', 'free_service', 'cashback', 'points', 'custom'],
+    enum: ['percentage', 'fixed_amount', 'buy_one_get_one', 'free_items',],
     required: [true, 'Offer type is required']
   },
   discountValue: {

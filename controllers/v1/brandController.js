@@ -1,6 +1,6 @@
 const Brand = require('../../models/v1/Brand');
 const Bill = require('../../models/v1/Bill');
-const Costumer = require('../../models/v1/Customer');
+const Customer = require('../../models/v1/Customer');
 const { sendResponse } = require('../../middleware');
 const common = require('../../utils/common');
 const moment = require('moment');
@@ -300,13 +300,16 @@ let brand_controller = {
         try {
             let query = { isDeleted: false };
             if (search) {
-                query.$or = [
+                const searchConditions = [
                     { brandname: { $regex: search, $options: 'i' } },
                     { managername: { $regex: search, $options: 'i' } },
                     { email: { $regex: search, $options: 'i' } },
                     { phone: { $regex: search, $options: 'i' } },
-                    { _id: { $regex: search, $options: 'i' } }
                 ];
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    searchConditions.push({ _id: search });
+                }
+                query.$or = searchConditions;
             }
 
             if (typeof isActive !== 'undefined') query.isActive = isActive;
@@ -738,8 +741,6 @@ let brand_controller = {
 
             let updateFields = {};
 
-            console.log({ engagementMilestones: req.body.engagementMilestones })
-
             if (req.body.brandname) updateFields.brandname = req.body.brandname;
             if (req.body.managername) updateFields.managername = req.body.managername;
             if (req.body.email) updateFields.email = req.body.email;
@@ -1008,6 +1009,7 @@ let brand_controller = {
                 totalCampaigns: brandData?.totalCampaigns || 0,
                 totalInfluencers: brandData?.totalInfluencers || 0,
                 totalAddedBalance: brandData?.totalAddedBalance || brandData?.balance,
+                isBrandListed: brandData?.posterImages.length > 0 ? true : false
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
@@ -1322,7 +1324,7 @@ let brand_controller = {
         try {
             const { id } = req.loginUser;
 
-            const getBrands = await Costumer.findById(id).select('brandVerified').populate('brandVerified', 'brandname brandlogo');
+            const getBrands = await Customer.findById(id).select('brandVerified').populate('brandVerified', 'brandname brandlogo');
             if (!getBrands) {
                 return sendResponse(req, res, 200, 0, { keyword: "Brands_not_found", components: {} });
             }
@@ -1620,7 +1622,7 @@ let brand_controller = {
             const { admin_id: brandId } = req.loginUser;
             const { billId } = req.body;
 
-            const bill = await Bill.findById(billId).populate('brandId');
+            const bill = await Bill.findById(billId);
             if (!bill) {
                 return sendResponse(req, res, 404, 0, { keyword: "Bill not found", components: {} });
             }
@@ -1644,13 +1646,15 @@ let brand_controller = {
             }
 
             const metrics = await getInstagramPostMetrics(bill.instaContentUrl);
-            let refundAmount = 0;
 
-            const brand = bill.brandId;
-            const billAmount = bill.amount || 0;
+            const brand = await Brand.findById(brandId);
+
+            let refundAmount = 0;
+            const billAmount = bill.billAmount || 0;
             const actualViews = metrics.viewsCount || 0;
 
-            if (brand.engagementMilestones && brand.engagementMilestones.length > 0) {
+            if (brand.viewAndRefund.refundType === 'mileStone' && brand.engagementMilestones && brand.engagementMilestones.length > 0) {
+
                 const milestone = brand.engagementMilestones.find(m =>
                     billAmount >= (m.amount || 0) &&
                     billAmount <= (m.to || Infinity)
@@ -1664,21 +1668,11 @@ let brand_controller = {
                         refundAmount = (billAmount * shortfallPercentage) / 100;
                     }
                 }
-            } else if (brand.viewAndRefund) {
-                const { minimumViews = 0, refundPercentage = 0, upToRefundAmount = 0 } = brand.viewAndRefund;
-
-                if (minimumViews > 0 && actualViews < minimumViews) {
-                    const viewsShortfall = minimumViews - actualViews;
-                    const shortfallPercentage = (viewsShortfall / minimumViews) * 100;
-                    const calculatedRefund = (billAmount * refundPercentage * shortfallPercentage) / 10000;
-
-                    refundAmount = upToRefundAmount > 0 ?
-                        Math.min(calculatedRefund, upToRefundAmount) :
-                        calculatedRefund;
-                }
+            } else if (brand.viewAndRefund.refundType === 'minimumView' && brand.viewAndRefund) {
+                const { minimumViews = 0, upToRefundAmount = 0 } = brand.viewAndRefund;
+                const calculatedRefund = (actualViews / minimumViews) * billAmount
+                refundAmount = Math.min(calculatedRefund, upToRefundAmount, billAmount)
             }
-
-            refundAmount = Math.max(0, Math.round(refundAmount * 100) / 100);
 
             const updatedBill = await Bill.findByIdAndUpdate(
                 billId,
@@ -1712,7 +1706,8 @@ let brand_controller = {
                     refundCalculation: {
                         calculatedRefund: refundAmount,
                         actualViews: actualViews,
-                        usedMilestone: brand.engagementMilestones?.length > 0
+                        refundType: brand.refundType,
+                        usedMilestone: brand.refundType === 'mileStone'
                     }
                 }
             });
@@ -2048,7 +2043,74 @@ let brand_controller = {
         } catch (e) {
             return sendResponse(req, res, 200, 0, { keyword: "failed", components: {} });
         }
-    }
+    },
+
+    search_brand: async (req, res) => {
+        const { page = 1, limit = 10, search, isActive = true, isLocked = false } = req.body;
+        const skip = (page - 1) * limit;
+        try {
+            let query = { isDeleted: false };
+            if (search) {
+                const searchConditions = [
+                    { brandname: { $regex: search, $options: 'i' } },
+                ];
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    searchConditions.push({ _id: search });
+                }
+                query.$or = searchConditions;
+            }
+
+            if (typeof isActive !== 'undefined') query.isActive = isActive;
+            if (typeof isLocked !== 'undefined') query.isLocked = isLocked;
+
+            const brands = await Brand.find(query)
+                .skip(skip)
+                .limit(parseInt(limit))
+                .sort({ createdAt: -1 });
+
+            const totalCount = await Brand.countDocuments(query);
+            const brandIds = brands.map(brand => brand._id);
+            const lastBills = await Bill.aggregate([
+                { $match: { brandId: { $in: brandIds } } },
+                { $sort: { brandId: 1, createdAt: -1 } },
+                {
+                    $group: {
+                        _id: '$brandId',
+                        lastBillId: { $first: '$_id' }
+                    }
+                }
+            ]);
+            const billMap = new Map();
+            lastBills.forEach(bill => {
+                billMap.set(bill._id.toString(), bill.lastBillId);
+            });
+
+            const totalPages = Math.ceil(totalCount / limit);
+            const response = {
+                totalCount,
+                totalPages,
+                currentPage: page,
+                brands: brands.map(brand => ({
+                    id: brand._id,
+                    brandname: brand.brandname,
+                    phone: brand.phone,
+                    email: brand.email,
+                    brandlogo: brand.brandlogo,
+                    isVerified: brand.isVerified,
+                    isActive: brand.isActive,
+                    isLocked: brand.isLocked,
+                    brandArchive: brand.archive,
+                    paymentType: brand.paymentType,
+                }))
+            };
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+        } catch (err) {
+            console.error("Error fetching brands:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+        }
+    },
 };
 
 module.exports = brand_controller;
+
+

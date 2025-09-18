@@ -13,7 +13,6 @@ const razorpay = new Razorpay({
 
 let billing_controller = {
     list_billing: async (req, res) => {
-        console.log("Bills fetched");
         const { page = 1, limit = 10, search, brandId, brandStatus, brandRefundStatus, customerRefundStatus, claimStatus, startDate, endDate, status } = req.body;
         const skip = (page - 1) * limit;
 
@@ -33,8 +32,8 @@ let billing_controller = {
             }
 
             const bills = await Bill.find(query)
-                .populate('customerId', 'name instaDetails profileImage email instaId')  
-                .populate('brandId', 'brandname brandlogo')                   
+                .populate('customerId', 'name instaDetails profileImage email instaId')
+                .populate('brandId', 'brandname brandlogo')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ createdAt: -1 });
@@ -48,7 +47,7 @@ let billing_controller = {
                     const customerName = bill.customerId ? bill.customerId.name : '';
                     return customerName.toLowerCase().includes(search.toLowerCase()) ||
                         (bill.instaId && bill.instaId.toLowerCase().includes(search.toLowerCase())) ||
-                        (bill.billNo && bill.billNo.toLowerCase().includes(search.toLowerCase()));
+                        (bill._id && bill._id.toString().includes(search.toLowerCase()));
                 });
             }
 
@@ -272,7 +271,7 @@ let billing_controller = {
     list_content: async (req, res) => {
         const { page = 1, limit = 10, search, brandStatus, brandRefundStatus, customerRefundStatus, claimStatus, startDate, endDate, status } = req.body;
         const skip = (page - 1) * limit;
-        const { admin_id : brandId } = req.loginUser;
+        const { admin_id: brandId } = req.loginUser;
         try {
             let query = { isDeleted: false };
             if (brandStatus) query.status = brandStatus;
@@ -390,7 +389,13 @@ let billing_controller = {
                 metaFetch: bill.metaFetch,
                 conversation: bill.conversation || [],
                 paymentType: bill.paymentType,
-                customerDetails : bill.customerId,
+                customerDetails: bill.customerId,
+                likes: bill.likes,
+                comments: bill.comments,
+                views: bill.views,
+                metaFetch: bill.metaFetch,
+                brandVerified: bill.brandVerified,
+
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
@@ -404,7 +409,7 @@ let billing_controller = {
         const { billingId, instaUrl } = req.body;
         const { id } = req.loginUser;
         try {
-            
+
             const existingBill = await Bill.findOne({
                 _id: billingId,
                 customerId: id,
@@ -414,7 +419,7 @@ let billing_controller = {
             if (!existingBill) {
                 return sendResponse(req, res, 200, 0, { keyword: "bill_not_found", components: {} });
             }
-            await Bill.findByIdAndUpdate(billingId, { instaContentUrl: instaUrl, refundStatus : "processing" });
+            await Bill.findByIdAndUpdate(billingId, { instaContentUrl: instaUrl, refundStatus: "processing" });
             return sendResponse(req, res, 200, 1, { keyword: "billing_updated", components: {} });
         } catch (err) {
             console.error("Error updating billing:", err);
@@ -422,7 +427,7 @@ let billing_controller = {
         }
     },
 
-     update_content_status: async (req, res) => {
+    update_content_status: async (req, res) => {
         const { billingId, status, conversation } = req.body;
 
         try {
@@ -602,7 +607,7 @@ let billing_controller = {
                     razorpayPaymentId: razorpay_payment_id,
                     razorpaySignature: razorpay_signature,
                     status: 'upload content',
-                    paymentStatus:"verified"
+                    paymentStatus: "verified"
                 });
 
                 return sendResponse(req, res, 200, 1, { keyword: "payment_verified", components: {} });
@@ -809,14 +814,16 @@ let billing_controller = {
             if (uploadContent) {
                 updateFields.contentUrl = uploadContent;
             }
-            
+
             if (contentType) {
                 updateFields.contentType = contentType;
             }
 
-            if( contentType === "story" ){
+            if (contentType === "story") {
 
                 const refundRate = await RateClassification.find({})
+
+
                 const refundAmount = refundRate[0];
                 updateFields.refundAmount = refundAmount.range[0].amount;
 

@@ -10,6 +10,8 @@ const cryptoLib = require('cryptlib');
 const shaKey = cryptoLib.getHashSha256(process.env.PASSWORD_ENC_KEY, 32);
 const { APP_NAME } = require('../../config/constants');
 const { sendMail } = require('../../utils/configEmailSMTP');
+const mongoose = require('mongoose');
+
 
 let auth_controller = {
     access_account: async (req, res) => {
@@ -240,12 +242,16 @@ let auth_controller = {
         try {
             let query = { isDeleted: false };
             if (search) {
-                query.$or = [
+                const searchConditions = [
                     { name: { $regex: search, $options: 'i' } },
                     { email: { $regex: search, $options: 'i' } },
                     { instaId: { $regex: search, $options: 'i' } },
-                    { phone: { $regex: search, $options: 'i' } }
+                    { phone: { $regex: search, $options: 'i' } },
                 ];
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    searchConditions.push({ _id: search });
+                }
+                query.$or = searchConditions;
             }
 
             if (typeof isActive !== 'undefined') query.isActive = isActive;

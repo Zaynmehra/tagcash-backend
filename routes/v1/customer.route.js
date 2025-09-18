@@ -163,4 +163,12 @@ router.get('/reEvaluateProfile',
     customerController.reEvaluateProfile
 );
 
+
+router.get('/verified-brands', 
+    checkApiKey, 
+    checkTokenCustomer, 
+    decryption,
+    customerController.get_verified_brand
+);
+
 module.exports = router;

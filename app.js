@@ -57,8 +57,8 @@ const requestLogger = (req, res, next) => {
     const logResponse = () => {
         const responseTime = Date.now() - startTime;
         console.log(`[${timestamp}] ${req.method} ${req.originalUrl || req.url} - ${res.statusCode} - ${responseTime}ms`);
-        console.log('REQ:', JSON.stringify(requestData, null, 2));
-        console.log('RES:', JSON.stringify(responseBody, null, 2));
+        console.log('REQ:', requestData);
+        console.log('RES:', responseBody);
         console.log('-'.repeat(50));
     };
 

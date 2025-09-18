@@ -141,7 +141,7 @@ async function getInstagramFollower(profileUrlOrUserId) {
                 const followersMatch = pageText.match(/(\d+(?:,\d+)*(?:\.\d+)?[KMB]?)\s*followers/i);
                 if (followersMatch) {
                     instaDetails.followersCount = parseCountString(followersMatch[1]);
-                    instaDetails.memberType =  getMemberType(parseCountString(followersMatch[1]));
+                    instaDetails.memberType = getMemberType(parseCountString(followersMatch[1]));
                 }
             }
 
@@ -164,14 +164,14 @@ async function getInstagramFollower(profileUrlOrUserId) {
             followersCount: instaDetails.followersCount,
             followingCount: instaDetails.followingCount,
             postsCount: instaDetails.postsCount,
-            memberType : getMemberType(instaDetails.followersCount),
+            memberType: getMemberType(instaDetails.followersCount),
         })
 
         return {
             followersCount: instaDetails.followersCount,
             followingCount: instaDetails.followingCount,
             postsCount: instaDetails.postsCount,
-            memberType : getMemberType(instaDetails.followersCount),
+            memberType: getMemberType(instaDetails.followersCount),
         }
 
     } catch (error) {
@@ -179,7 +179,7 @@ async function getInstagramFollower(profileUrlOrUserId) {
             followersCount: 0,
             followingCount: 0,
             postsCount: 0,
-            memberType : "Starter Member"
+            memberType: "Starter Member"
         }
     }
 }
@@ -201,18 +201,18 @@ const getMemberType = (followersCount) => {
 
     if (followersCount <= 1000) {
         return "Starter Member"
-    } else if (followersCount > 1000 && followersCount <= 5000 ) {
+    } else if (followersCount > 1000 && followersCount <= 5000) {
         return "Bronze Member"
     }
     else if (followersCount > 5000 && followersCount <= 10000) {
         return "Silver Member"
-    } 
+    }
     else if (followersCount > 10000 && followersCount <= 18000) {
         return "Gold Member"
     }
     else if (followersCount > 18000) {
         return "Priority Member"
-    } 
+    }
     else {
         return "Starter Member"
     }
@@ -233,6 +233,8 @@ const getInstagramFollowers = async (username) => {
 
         const response = await axios.request(options);
         const userAnalytics = await getInstagramAnalytics(username);
+
+        console.log({ userAnalytics });
 
         if (response.data) {
             const userData = response.data;
@@ -316,7 +318,7 @@ const getInstagramPostMetrics = async (reelUrl) => {
             const likesCount = mediaData.edge_media_preview_like?.count || 0;
             const commentsCount = mediaData.edge_media_preview_comment?.count || 0;
             const playCount = mediaData.video_view_count || 0;
-            
+
             return {
                 viewsCount: viewsCount,
                 likesCount: likesCount,
@@ -324,20 +326,33 @@ const getInstagramPostMetrics = async (reelUrl) => {
                 playCount: playCount
             };
         } else {
-             throw new Error('No data received from Instagram API');
+            throw new Error('No data received from Instagram API');
         }
     } catch (error) {
         console.error('Error fetching Instagram Reel data:', error.message);
-        throw error; 
+        throw error;
     }
 };
 
 
-  const getInstagramAnalytics = async (username) => {
+const getInstagramAnalytics = async (username) => {
   try {
+    const paginationToken = null;
+    const amount = 10;
+    const formData = new URLSearchParams();
+    formData.append('username_or_url', username);
+    
+    if (paginationToken) {
+      formData.append('pagination_token', paginationToken);
+    }
+    
+    if (amount) {
+      formData.append('amount', amount.toString());
+    }
+
     const response = await axios.post(
-      'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_posts.php',
-      `username=${username}`,
+      'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_reels.php',
+      formData,
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -347,8 +362,10 @@ const getInstagramPostMetrics = async (reelUrl) => {
       }
     );
 
+    console.log({response: response.data});
+
     const jsonData = response.data;
-    const posts = jsonData.posts;
+    const posts = jsonData.reels || jsonData.posts; // Support both formats
     
     if (!posts || posts.length === 0) {
       return {
@@ -363,6 +380,7 @@ const getInstagramPostMetrics = async (reelUrl) => {
         postsWithLikes: 0,
         postsWithComments: 0,
         postsWithViews: 0,
+        paginationToken: jsonData.pagination_token || null,
         error: "No posts found for this user"
       };
     }
@@ -376,7 +394,8 @@ const getInstagramPostMetrics = async (reelUrl) => {
     
     // Calculate metrics from posts
     posts.forEach(post => {
-      const node = post.node;
+      // Handle both data structures: post.node.media (reels) or post.node (posts)
+      const node = post.node.media || post.node;
       
       if (node.like_count !== null && node.like_count !== undefined) {
         totalLikes += node.like_count;
@@ -388,8 +407,10 @@ const getInstagramPostMetrics = async (reelUrl) => {
         postsWithComments++;
       }
       
-      if (node.view_count !== null && node.view_count !== undefined) {
-        totalViews += node.view_count;
+      // Check for play_count (reels) or view_count (posts)
+      const viewCount = node.play_count || node.view_count;
+      if (viewCount !== null && viewCount !== undefined && viewCount > 0) {
+        totalViews += viewCount;
         postsWithViews++;
       }
     });
@@ -409,10 +430,13 @@ const getInstagramPostMetrics = async (reelUrl) => {
       totalViews: postsWithViews > 0 ? totalViews : null,
       postsWithLikes: postsWithLikes,
       postsWithComments: postsWithComments,
-      postsWithViews: postsWithViews
+      postsWithViews: postsWithViews,
+      paginationToken: jsonData.pagination_token || null
     };
     
   } catch (error) {
+    console.error('Error fetching Instagram Analytics:', error.message);
+
     return {
       username: username,
       error: `Failed to fetch data: ${error.message}`,
@@ -425,7 +449,8 @@ const getInstagramPostMetrics = async (reelUrl) => {
       totalViews: null,
       postsWithLikes: 0,
       postsWithComments: 0,
-      postsWithViews: 0
+      postsWithViews: 0,
+      paginationToken: null
     };
   }
 }

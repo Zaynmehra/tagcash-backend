@@ -8,6 +8,7 @@ const {
 } = require("../../utils/sendOtp.js");
 const { OAuth2Client } = require('google-auth-library');
 const { getInstagramFollowers } = require('../../utils/instaService.js');
+const { sendResponse } = require('../../middleware/index.js');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
@@ -1061,6 +1062,9 @@ const customerController = {
                 });
             }
             const instaDetails = await getInstagramFollowers(customer.instaId.trim());
+
+            console.log({ instaDetails })
+
             const updatedCustomer = await Customer.findByIdAndUpdate(
                 customerId,
                 {
@@ -1091,7 +1095,22 @@ const customerController = {
                 message: 'Internal server error'
             });
         }
-    }
+    },
+
+    get_verified_brand: async (req, res) => {
+        try {
+            const { id } = req.loginUser;
+
+            const getBrands = await Customer.findById(id).select('brandVerified').populate('brandVerified', 'brandname brandlogo');
+            if (!getBrands) {
+                return sendResponse(req, res, 200, 0, { keyword: "Brands_not_found", components: {} });
+            }
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, { brands: getBrands });
+        } catch (err) {
+            console.error("Error fetching verified brands:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+        }
+    },
 };
 
 module.exports = customerController;

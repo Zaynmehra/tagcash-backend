@@ -474,4 +474,8 @@ router.post("/getOfferAnalytics", checkApiKey, checkTokenBrand, decryption, vali
   endDate: Joi.date().optional()
 })), brandController.get_offer_analytics);
 
+router.post("/searchBrand", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
+  search: Joi.string().optional(),
+})), brandController.search_brand);
+
 module.exports = router;

@@ -10,14 +10,14 @@ let rate_classification_controller = {
                 return sendResponse(req, res, 200, 0, { keyword: "range_data_required", components: {} });
             }
 
-            for (let r of range) {
-                if (!(r.from === 0) || !r.to || !r.amount) {
-                    return sendResponse(req, res, 200, 0, { keyword: "invalid_range_structure", components: {} });
-                }
-                if (r.from >= r.to) {
-                    return sendResponse(req, res, 200, 0, { keyword: "invalid_range_values", components: {} });
-                }
-            }
+            // for (let r of range) {
+            //     if (!(r.from === 0) || !r.to || !r.amount) {
+            //         return sendResponse(req, res, 200, 0, { keyword: "invalid_range_structure", components: {} });
+            //     }
+            //     if (r.from >= r.to) {
+            //         return sendResponse(req, res, 200, 0, { keyword: "invalid_range_values", components: {} });
+            //     }
+            // }
 
             if (brandId) {
                 const brand = await Brand.findById(brandId);
