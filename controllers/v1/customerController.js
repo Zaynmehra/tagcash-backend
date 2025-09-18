@@ -11,6 +11,7 @@ const { getInstagramFollowers } = require('../../utils/instaService.js');
 const { sendResponse } = require('../../middleware/index.js');
 const Challenge = require('../../models/v1/Challenge.js');
 const OffersDeals = require('../../models/v1/OffersDeals.js');
+const Brand = require('../../models/v1/Brand.js');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
@@ -1115,41 +1116,68 @@ const customerController = {
     },
 
 
-    get_brand_offers: async (req, res) => {
-    try {
-        const { id } = req.loginUser;
-        const { brandId } = req.params; 
+    search_brand: async (req, res) => {
+        try {
+            const { brandName } = req.params;
 
-        const [getOffers, getChallenges] = await Promise.all([
-            OffersDeals.find({ brandId }).select('title description'),
-            Challenge.find({ brandId }).select('title description')
-        ]);
-        
-        const combinedData = {
-            offers: getOffers || [],
-            challenges: getChallenges || []
-        };
-        
-        
-        if (!getOffers.length && !getChallenges.length) {
-            return sendResponse(req, res, 200, 0, { 
-                keyword: "no_data_found", 
-                components: {} 
+            const brands = await Brand.find({ brandname : brandName }).select('brandName brandlogo')
+
+            if (!brands) {
+                return sendResponse(req, res, 200, 0, {
+                    keyword: "no_data_found",
+                    components: {}
+                },{ brands: [] });
+            }
+
+            return sendResponse(req, res, 200, 1, {
+                keyword: "success"
+            }, brands);
+
+        } catch (err) {
+            console.error("Error fetching brand offers and challenges:", err);
+            return sendResponse(req, res, 500, 0, {
+                keyword: "failed_to_fetch",
+                components: {}
             });
         }
-        
-        return sendResponse(req, res, 200, 1, { 
-            keyword: "success" 
-        }, combinedData);
-        
-    } catch (err) {
-        console.error("Error fetching brand offers and challenges:", err);
-        return sendResponse(req, res, 500, 0, { 
-            keyword: "failed_to_fetch", 
-            components: {} 
-        });
-    }
-},
+    },
+
+
+    get_brand_offers: async (req, res) => {
+        try {
+            const { id } = req.loginUser;
+            const { brandId } = req.params;
+
+            const [getOffers, getChallenges] = await Promise.all([
+                OffersDeals.find({ brandId }).select('title description'),
+                Challenge.find({ brandId }).select('title description')
+            ]);
+
+            const combinedData = {
+                offers: getOffers || [],
+                challenges: getChallenges || []
+            };
+
+
+            if (!getOffers.length && !getChallenges.length) {
+                return sendResponse(req, res, 200, 0, {
+                    keyword: "no_data_found",
+                    components: {}
+                });
+            }
+
+            return sendResponse(req, res, 200, 1, {
+                keyword: "success"
+            }, combinedData);
+
+        } catch (err) {
+            console.error("Error fetching brand offers and challenges:", err);
+            return sendResponse(req, res, 500, 0, {
+                keyword: "failed_to_fetch",
+                components: {}
+            });
+        }
+    },
 };
 
 module.exports = customerController;

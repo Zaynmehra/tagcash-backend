@@ -176,7 +176,14 @@ router.get('/getBrands-offers',
     checkApiKey, 
     checkTokenCustomer, 
     decryption,
-    customerController.get_verified_brand
+    customerController.get_brand_offers
+);
+
+router.get('/search-brand', 
+    checkApiKey, 
+    checkTokenCustomer, 
+    decryption,
+    customerController.search_brand
 );
 
 module.exports = router;
