@@ -857,14 +857,46 @@ let billing_controller = {
                 updateFields.selectedOffer = selectedOffer;
             }
 
-            if (contentType === "story") {
+            if (existingBill.contentType === 'story') {
+                const customer = await Customer.findById(existingBill.customerId);
+                if (!customer) {
+                    return sendResponse(req, res, 404, 0, {
+                        keyword: "Customer not found",
+                        components: {}
+                    });
+                }
 
-                const refundRate = await RateClassification.find({})
+                const customerFollowers = customer.instaDetails?.followersCount || 0;
 
+                console.log("Customer Followers:", customerFollowers);
 
-                const refundAmount = refundRate[0];
-                updateFields.refundAmount = refundAmount.range[0].amount;
+                const rateClassification = await RateClassification.findOne({
+                    contentType: 'story',
+                    brandId: { $ne: brandId }
+                });
 
+                console.log("Rate Classification:", rateClassification);
+
+                if (rateClassification && rateClassification.range && rateClassification.range.length > 0) {
+                    let applicableRange = rateClassification.range.find(r =>
+                        customerFollowers >= (r.from || 0) &&
+                        customerFollowers <= (r.to || Infinity)
+                    );
+
+                    if (!applicableRange) {
+                        const sortedRanges = rateClassification.range.sort((a, b) => (b.to || 0) - (a.to || 0));
+                        const highestRange = sortedRanges[0];
+
+                        if (customerFollowers > (highestRange.to || 0)) {
+                            applicableRange = highestRange;
+                        }
+                    }
+
+                    if (applicableRange) {
+                        refundAmount = Math.min(billAmount, applicableRange.amount);
+                        updateFields.refundAmount = refundAmount;
+                    }
+                }
             }
 
             const updatedBill = await Bill.findByIdAndUpdate(
