@@ -11,7 +11,7 @@ const { sendWelcomeEmail, sendVerificationEmail } = require('../../utils/sendOtp
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Offers = require('../../models/v1/OffersDeals');
-
+const RateClassification = require('../../models/v1/RateClassification');
 const Razorpay = require('razorpay');
 const { getInstagramPostMetrics } = require('../../utils/instaService');
 const razorpay = new Razorpay({
@@ -1623,68 +1623,104 @@ let brand_controller = {
             const { billId } = req.body;
 
             const bill = await Bill.findById(billId);
+
             if (!bill) {
                 return sendResponse(req, res, 404, 0, { keyword: "Bill not found", components: {} });
             }
+
             if (bill.brandId._id.toString() !== brandId.toString()) {
                 return sendResponse(req, res, 401, 0, { keyword: "Not Authorized To modify this Bill", components: {} });
             }
 
-            if (!bill.instaContentUrl || bill.instaContentUrl.trim() === '') {
-                return sendResponse(req, res, 400, 0, {
-                    keyword: "Instagram content URL is required",
-                    components: {}
-                });
-            }
-
-            // const urlPattern = /^https?:\/\/(www\.)?instagram\.com\/(p|reels)\/[A-Za-z0-9_-]+\/?$/;
-            // if (!urlPattern.test(bill.instaContentUrl)) {
-            //     return sendResponse(req, res, 400, 0, {
-            //         keyword: "Invalid Instagram URL format",
-            //         components: {}
-            //     });
-            // }
-
-            const metrics = await getInstagramPostMetrics(bill.instaContentUrl);
-
-            const brand = await Brand.findById(brandId);
-
             let refundAmount = 0;
             const billAmount = bill.billAmount || 0;
-            const actualViews = metrics.viewsCount || 0;
+            let actualViews = 0;
+            let metrics = null;
 
-            if (brand.viewAndRefund.refundType === 'mileStone' && brand.engagementMilestones && brand.engagementMilestones.length > 0) {
+            if (bill.contentType === 'story') {
+                const customer = await Customer.findById(bill.customerId);
+                if (!customer) {
+                    return sendResponse(req, res, 404, 0, {
+                        keyword: "Customer not found",
+                        components: {}
+                    });
+                }
 
-                const milestone = brand.engagementMilestones.find(m =>
-                    billAmount >= (m.amount || 0) &&
-                    billAmount <= (m.to || Infinity)
-                );
+                const customerFollowers = customer.instaDetails?.followersCount || 0;
 
-                if (milestone && milestone.views > 0) {
-                    const requiredViews = milestone.views;
-                    if (actualViews < requiredViews) {
-                        const viewsShortfall = requiredViews - actualViews;
-                        const shortfallPercentage = (viewsShortfall / requiredViews) * 100;
-                        refundAmount = (billAmount * shortfallPercentage) / 100;
+                console.log("Customer Followers:", customerFollowers);
+
+                const rateClassification = await RateClassification.findOne({
+                    contentType: 'story',
+                    brandId: { $ne: brandId }
+                });
+
+                console.log("Rate Classification:", rateClassification);
+
+                if (rateClassification && rateClassification.range && rateClassification.range.length > 0) {
+                    let applicableRange = rateClassification.range.find(r =>
+                        customerFollowers >= (r.from || 0) &&
+                        customerFollowers <= (r.to || Infinity)
+                    );
+
+                    if (!applicableRange) {
+                        const sortedRanges = rateClassification.range.sort((a, b) => (b.to || 0) - (a.to || 0));
+                        const highestRange = sortedRanges[0];
+
+                        if (customerFollowers > (highestRange.to || 0)) {
+                            applicableRange = highestRange;
+                        }
+                    }
+
+                    if (applicableRange) {
+                        refundAmount = Math.min(billAmount, applicableRange.amount);
                     }
                 }
-            } else if (brand.viewAndRefund.refundType === 'minimumView' && brand.viewAndRefund) {
-                const { minimumViews = 0, upToRefundAmount = 0 } = brand.viewAndRefund;
-                const calculatedRefund = (actualViews / minimumViews) * billAmount
-                refundAmount = Math.min(calculatedRefund, upToRefundAmount, billAmount)
+            } else {
+                if (!bill.instaContentUrl || bill.instaContentUrl.trim() === '') {
+                    return sendResponse(req, res, 400, 0, {
+                        keyword: "Instagram content URL is required",
+                        components: {}
+                    });
+                }
+
+                metrics = await getInstagramPostMetrics(bill.instaContentUrl);
+                actualViews = metrics.viewsCount || 0;
+
+                const brand = await Brand.findById(brandId);
+
+                if (brand.viewAndRefund.refundType === 'mileStone' && brand.engagementMilestones && brand.engagementMilestones.length > 0) {
+                    const milestone = brand.engagementMilestones.find(m =>
+                        billAmount >= (m.amount || 0) &&
+                        billAmount <= (m.to || Infinity)
+                    );
+
+                    if (milestone && milestone.views > 0) {
+                        const requiredViews = milestone.views;
+                        if (actualViews < requiredViews) {
+                            const viewsShortfall = requiredViews - actualViews;
+                            const shortfallPercentage = (viewsShortfall / requiredViews) * 100;
+                            refundAmount = (billAmount * shortfallPercentage) / 100;
+                        }
+                    }
+                } else if (brand.viewAndRefund.refundType === 'minimumView' && brand.viewAndRefund) {
+                    const { minimumViews = 0, upToRefundAmount = 0 } = brand.viewAndRefund;
+                    const calculatedRefund = (actualViews / minimumViews) * billAmount;
+                    refundAmount = Math.min(calculatedRefund, upToRefundAmount, billAmount);
+                }
             }
 
             const updatedBill = await Bill.findByIdAndUpdate(
                 billId,
                 {
                     $set: {
-                        likes: metrics.likesCount,
-                        comments: metrics.commentsCount,
-                        views: metrics.viewsCount,
+                        likes: metrics?.likesCount || 0,
+                        comments: metrics?.commentsCount || 0,
+                        views: metrics?.viewsCount || actualViews,
                         metaFetch: JSON.stringify({
                             fetchedAt: new Date(),
-                            playCount: metrics.playCount,
-                            source: 'instagram-api'
+                            playCount: metrics?.playCount || 0,
+                            source: bill.contentType === 'story' ? 'follower-based' : 'instagram-api'
                         }),
                         lastActive: new Date(),
                         refundAmount,
@@ -1698,17 +1734,17 @@ let brand_controller = {
                 keyword: "Engagements updated successfully",
                 components: {
                     bill: updatedBill,
-                    metrics: {
-                        likes: metrics.likesCount,
-                        comments: metrics.commentsCount,
-                        views: metrics.viewsCount,
-                        playCount: metrics.playCount
+                    metrics: bill.contentType === 'story' ? null : {
+                        likes: metrics?.likesCount || 0,
+                        comments: metrics?.commentsCount || 0,
+                        views: metrics?.viewsCount || 0,
+                        playCount: metrics?.playCount || 0
                     },
                     refundCalculation: {
                         calculatedRefund: refundAmount,
                         actualViews: actualViews,
-                        refundType: brand.refundType,
-                        usedMilestone: brand.refundType === 'mileStone'
+                        refundType: bill.contentType === 'story' ? 'story-follower-based' : 'view-based',
+                        usedFollowerCount: bill.contentType === 'story'
                     }
                 }
             });

@@ -1153,9 +1153,7 @@ const customerController = {
 
     get_brand_offers: async (req, res) => {
         try {
-            const { id } = req.loginUser;
             const { brandId } = req.params;
-
             const [getOffers, getChallenges] = await Promise.all([
                 OffersDeals.find({ brandId }).select('title description'),
                 Challenge.find({ brandId }).select('title description')

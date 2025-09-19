@@ -5,6 +5,7 @@ const common = require('../../utils/common');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const RateClassification = require('../../models/v1/RateClassification');
+const mongoose = require('mongoose');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -287,24 +288,43 @@ let billing_controller = {
                 if (endDate) query.createdAt.$lte = new Date(endDate);
             }
 
+            if (search) {
+                const searchConditions = [
+                    { instaId: { $regex: search, $options: 'i' } },
+                    { billNo: { $regex: search, $options: 'i' } }
+                ];
+
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    searchConditions.push({ _id: search });
+                    searchConditions.push({ customerId: search });
+                }
+
+                const customerSearchQuery = {
+                    $or: [
+                        { name: { $regex: search, $options: 'i' } },
+                        { instaId: { $regex: search, $options: 'i' } }
+                    ]
+                };
+
+                if (mongoose.Types.ObjectId.isValid(search)) {
+                    customerSearchQuery.$or.push({ _id: search });
+                }
+
+                const matchingCustomers = await Customer.find(customerSearchQuery).select('_id');
+                const customerIds = matchingCustomers.map(customer => customer._id);
+
+                if (customerIds.length > 0) {
+                    searchConditions.push({ customerId: { $in: customerIds } });
+                }
+
+                query.$or = searchConditions;
+            }
+
             const bills = await Bill.find(query)
-                .populate('customerId', 'instaId name profileImage email, instaDetails')
+                .populate('customerId', 'instaId name profileImage email instaDetails')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ createdAt: -1 });
-
-            let filteredBills = bills;
-
-            if (search) {
-                filteredBills = bills.filter(bill => {
-                    const customerName = bill.customerId ? bill.customerId.name : '';
-                    const customerId = bill.customerId ? bill.customerId._id.toString() : '';
-                    return customerName.toLowerCase().includes(search.toLowerCase()) ||
-                        (bill.instaId && bill.instaId.toLowerCase().includes(search.toLowerCase())) ||
-                        (bill.billNo && bill.billNo.toLowerCase().includes(search.toLowerCase())) ||
-                        customerId.toLowerCase().includes(search.toLowerCase());
-                });
-            }
 
             const totalCount = await Bill.countDocuments(query);
             const totalPages = Math.ceil(totalCount / limit);
@@ -313,7 +333,7 @@ let billing_controller = {
                 totalCount,
                 totalPages,
                 currentPage: page,
-                bills: filteredBills.map(bill => ({
+                bills: bills.map(bill => ({
                     id: bill._id,
                     customerName: bill.customerId ? bill.customerId.name : '',
                     instaId: bill.customerId ? bill.customerId.instaId : '',
@@ -338,7 +358,6 @@ let billing_controller = {
                     comments: bill.comments,
                     views: bill.views,
                     metaFetch: bill.metaFetch,
-
                 }))
             };
 
@@ -627,7 +646,7 @@ let billing_controller = {
             return sendResponse(req, res, 500, 0, { keyword: "payment_verification_error", components: {} });
         }
     },
-    
+
     get_bills: async (req, res) => {
         const { id } = req.loginUser;
         const { page = 1, limit = 10, status, paymentType } = req.query;
@@ -803,7 +822,7 @@ let billing_controller = {
 
 
     upload_content: async (req, res) => {
-        const { billingId, uploadContent, contentType } = req.body;
+        const { billingId, uploadContent, contentType, selectedOffer, selectedOfferType } = req.body;
         const { id } = req.loginUser;
 
         try {
@@ -834,6 +853,10 @@ let billing_controller = {
                 updateFields.contentType = contentType;
             }
 
+            if (selectedOffer) {
+                updateFields.selectedOffer = selectedOffer;
+            }
+
             if (contentType === "story") {
 
                 const refundRate = await RateClassification.find({})
@@ -847,6 +870,8 @@ let billing_controller = {
             const updatedBill = await Bill.findByIdAndUpdate(
                 billingId,
                 updateFields,
+                selectedOffer,
+                selectedOfferType,
                 { new: true }
             ).populate('brandId', 'name logo');
 

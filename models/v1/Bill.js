@@ -12,6 +12,16 @@ const billSchema = new mongoose.Schema({
     required: [true, 'Brand ID is required']
   },
 
+  selectedOfferType: {
+    type: String,
+    required: true,
+    enum: ['Offers', 'Challenges'],
+  },
+  selectedOffer: {
+    type: mongoose.Schema.Types.ObjectId,
+    refPath: 'selectedOfferType', 
+  },
+
   paymentType: {
     type: String,
     enum: ['upload bill', 'pay now'],

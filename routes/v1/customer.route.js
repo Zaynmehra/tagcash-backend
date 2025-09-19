@@ -172,7 +172,7 @@ router.get('/verified-brands',
 );
 
 
-router.get('/getBrands-offers', 
+router.get('/getBrands-offers/:brandId?', 
     checkApiKey, 
     checkTokenCustomer, 
     decryption,

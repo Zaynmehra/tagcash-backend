@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { checkApiKey, decryption, validateJoi, checkToken } = require('../../middleware');
+const { checkApiKey, decryption, validateJoi, checkToken, checkTokenBrand } = require('../../middleware');
 const challengeController = require('../../controllers/v1/challengeController');
 const Joi = require('joi');
 
@@ -51,7 +51,7 @@ const uploadChallengeImages = async (req, res, next) => {
   }
 };
 
-router.post("/addChallenges", checkApiKey, checkToken, upload.fields([
+router.post("/addChallenges", checkApiKey, checkTokenBrand, upload.fields([
   { name: 'images', maxCount: 10 },
   { name: 'bannerImage', maxCount: 1 }
 ]), uploadChallengeImages, decryption, validateJoi(Joi.object({
@@ -95,7 +95,7 @@ router.post("/addChallenges", checkApiKey, checkToken, upload.fields([
 })), challengeController.add_challenges);
 
 // List Challenges
-router.post("/listChallenges", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/listChallenges", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   page: Joi.number().min(1).default(1).optional(),
   limit: Joi.number().min(1).max(100).default(10).optional(),
   search: Joi.string().optional().allow('', null),
@@ -110,12 +110,12 @@ router.post("/listChallenges", checkApiKey, checkToken, decryption, validateJoi(
 })), challengeController.list_challenges);
 
 // Get Single Challenge
-router.get("/getChallenge/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.get("/getChallenge/:challengeId", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required()
 }), 'params'), challengeController.get_challenge);
 
 // Update Challenge
-router.put("/updateChallenge/:challengeId", checkApiKey, checkToken, upload.fields([
+router.put("/updateChallenge/:challengeId", checkApiKey, checkTokenBrand, upload.fields([
   { name: 'images', maxCount: 10 },
   { name: 'bannerImage', maxCount: 1 }
 ]), uploadChallengeImages, decryption, validateJoi(Joi.object({
@@ -159,17 +159,17 @@ router.put("/updateChallenge/:challengeId", checkApiKey, checkToken, upload.fiel
   autoExpire: Joi.boolean().optional()
 })), challengeController.update_challenge);
 
-router.post("/deleteChallenges", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/deleteChallenges", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required(),
 })), challengeController.delete_challenges);
 
-router.post("/updateChallengesStatus", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/updateChallengesStatus", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required(),
   isActive: Joi.boolean().required(),
 })), challengeController.update_challenges_status);
 
 
-router.post("/participate/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/participate/:challengeId", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required()
 }), 'params'), validateJoi(Joi.object({
   customerId: Joi.string().required(),
@@ -178,7 +178,7 @@ router.post("/participate/:challengeId", checkApiKey, checkToken, decryption, va
   customerInstaId: Joi.string().optional()
 })), challengeController.participate_in_challenge);
 
-router.put("/participationStatus/:challengeId/:participationId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.put("/participationStatus/:challengeId/:participationId", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required(),
   participationId: Joi.string().required()
 }), 'params'), validateJoi(Joi.object({

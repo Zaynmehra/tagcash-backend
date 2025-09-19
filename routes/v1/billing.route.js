@@ -81,6 +81,8 @@ router.post("/uploadcontent", checkApiKey, checkTokenCustomer, upload.fields([
 }, decryption, validateJoi(Joi.object({
   billingId: Joi.string().required(),
   uploadContent: Joi.string().optional(),
+  selectedOffer: Joi.string().optional(),
+  selectedOfferType: Joi.string().optional(),
   contentType: Joi.string().valid('post', 'story', 'reel').required()
 })), billingController.upload_content);
 
