@@ -14,7 +14,6 @@ const billSchema = new mongoose.Schema({
 
   selectedOfferType: {
     type: String,
-    required: true,
     enum: ['Offers', 'Challenges'],
   },
   selectedOffer: {
