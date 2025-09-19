@@ -857,7 +857,7 @@ let billing_controller = {
                 updateFields.selectedOffer = selectedOffer;
             }
 
-            if (existingBill.contentType === 'story') {
+            if (contentType === 'story') {
                 const customer = await Customer.findById(existingBill.customerId);
                 if (!customer) {
                     return sendResponse(req, res, 404, 0, {
