@@ -4,7 +4,11 @@ const { sendResponse } = require('../../middleware');
 
 let requested_brand_controller = {
     create_requested_brand: async (req, res) => {
-        const { customerId, brandName, remark } = req.body;
+
+        const { brandName, remark  } = req.body;
+
+        const {  customerId  } = req.loginUser;
+
         try {
             const customer = await Customer.findById(customerId);
             if (!customer) {
@@ -23,7 +27,7 @@ let requested_brand_controller = {
             const newRequestedBrand = new RequestedBrand({
                 customerId,
                 brandName,
-                remark
+                remark : remark || ""
             });
 
             const result = await newRequestedBrand.save();

@@ -39,6 +39,11 @@ const brandSchema = new mongoose.Schema({
     default: 'brandlogo.jpeg'
   },
 
+  monthlyBudget:{
+    type: Number,
+    default: 0
+  },
+
   brandurl: {
     type: String,
     trim: true
@@ -366,10 +371,12 @@ const brandSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+
   totalCampaigns: {
     type: Number,
     default: 0
   },
+  
   totalInfluencers: {
     type: Number,
     default: 0

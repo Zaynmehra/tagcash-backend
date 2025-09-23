@@ -80,6 +80,7 @@ router.post("/uploadcontent", checkApiKey, checkTokenCustomer, upload.fields([
   }
 }, decryption, validateJoi(Joi.object({
   billingId: Joi.string().required(),
+  brandId: Joi.string().required(),
   uploadContent: Joi.string().optional(),
   selectedOffer: Joi.string().optional(),
   selectedOfferType: Joi.string().optional(),

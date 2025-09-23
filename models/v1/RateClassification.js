@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const requestedBrands = new mongoose.Schema({
+const RateClassification = new mongoose.Schema({
 
     brandId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -29,4 +29,4 @@ const requestedBrands = new mongoose.Schema({
     timestamps: true
 });
 
-module.exports = mongoose.model('RateClassification', requestedBrands);
+module.exports = mongoose.model('RateClassification', RateClassification);

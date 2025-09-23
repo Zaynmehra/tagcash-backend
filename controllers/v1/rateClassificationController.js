@@ -41,10 +41,10 @@ let rate_classification_controller = {
             const rateClassification = await RateClassification.findOneAndUpdate(
                 query,
                 updateData,
-                { 
-                    new: true, 
+                {
+                    new: true,
                     upsert: true,
-                    runValidators: true 
+                    runValidators: true
                 }
             ).populate('brandId', 'name');
 
@@ -267,6 +267,170 @@ let rate_classification_controller = {
 
         } catch (err) {
             console.error("Error listing rate classifications:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_list_rates", components: {} });
+        }
+    },
+
+    brand_create_or_update_rate: async (req, res) => {
+        const { contentType, range } = req.body;
+        const { admin_id : brandId } = req.loginUser;
+
+        try {
+            if (!brandId) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_authenticated", components: {} });
+            }
+
+            if (!range || !Array.isArray(range) || range.length === 0) {
+                return sendResponse(req, res, 200, 0, { keyword: "range_data_required", components: {} });
+            }
+
+            const rateClassification = await RateClassification.findOneAndUpdate(
+                { brandId, contentType },
+                { brandId, contentType, range },
+                {
+                    new: true,
+                    upsert: true,
+                    runValidators: true
+                }
+            ).populate('brandId', 'name');
+
+            if (!rateClassification) {
+                return sendResponse(req, res, 200, 0, { keyword: "failed_to_update_rate", components: {} });
+            }
+
+            return sendResponse(req, res, 200, 1, { keyword: "rate_updated_successfully", components: { id: rateClassification._id } });
+
+        } catch (err) {
+            console.error("Error creating/updating rate classification:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_update_rate", components: {} });
+        }
+    },
+
+    brand_get_my_rates: async (req, res) => {
+        const { admin_id : brandId } = req.loginUser;
+
+        try {
+            if (!brandId) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_authenticated", components: {} });
+            }
+
+            const { contentType } = req.body;
+
+            let query = { brandId };
+            if (contentType) {
+                query.contentType = contentType;
+            }
+
+            const rates = await RateClassification.find(query).populate('brandId', 'name logo');
+
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, rates);
+
+        } catch (err) {
+            console.error("Error fetching brand rate classifications:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_rates", components: {} });
+        }
+    },
+
+    brand_get_rate_by_content_type: async (req, res) => {
+        const { admin_id : brandId } = req.loginUser;
+
+        try {
+            if (!brandId) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_authenticated", components: {} });
+            }
+
+            const { contentType } = req.body;
+
+            if (!contentType) {
+                return sendResponse(req, res, 200, 0, { keyword: "content_type_required", components: {} });
+            }
+
+            const rateClassification = await RateClassification.findOne({
+                brandId,
+                contentType
+            }).populate('brandId', 'name logo');
+
+            if (!rateClassification) {
+                return sendResponse(req, res, 200, 0, { keyword: "rate_not_found", components: {} });
+            }
+
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, rateClassification);
+
+        } catch (err) {
+            console.error("Error fetching rate by content type:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_rate", components: {} });
+        }
+    },
+
+    brand_delete_rate: async (req, res) => {
+        const { admin_id : brandId } = req.loginUser;
+
+        try {
+            if (!brandId) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_authenticated", components: {} });
+            }
+
+            const { rateId } = req.body;
+
+            if (!rateId) {
+                return sendResponse(req, res, 200, 0, { keyword: "rate_id_required", components: {} });
+            }
+
+            const deletedRate = await RateClassification.findOneAndDelete({
+                _id: rateId,
+                brandId: brandId
+            });
+
+            if (!deletedRate) {
+                return sendResponse(req, res, 200, 0, { keyword: "rate_not_found_or_unauthorized", components: {} });
+            }
+
+            return sendResponse(req, res, 200, 1, { keyword: "rate_deleted_successfully", components: {} });
+
+        } catch (err) {
+            console.error("Error deleting rate classification:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_delete_rate", components: {} });
+        }
+    },
+
+    brand_list_my_rates: async (req, res) => {
+
+        const { admin_id : brandId } = req.loginUser;
+
+        try {
+            if (!brandId) {
+                return sendResponse(req, res, 200, 0, { keyword: "brand_not_authenticated", components: {} });
+            }
+
+            const { page = 1, limit = 10, contentType } = req.body;
+            const skip = (page - 1) * limit;
+
+            let query = { brandId };
+
+            if (contentType) {
+                query.contentType = contentType;
+            }
+
+            const rates = await RateClassification.find(query)
+                .populate('brandId', 'name logo')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit));
+
+            const totalCount = await RateClassification.countDocuments(query);
+            const totalPages = Math.ceil(totalCount / limit);
+
+            const response = {
+                totalCount,
+                totalPages,
+                currentPage: parseInt(page),
+                rates
+            };
+
+            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+
+        } catch (err) {
+            console.error("Error listing brand rate classifications:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_list_rates", components: {} });
         }
     }

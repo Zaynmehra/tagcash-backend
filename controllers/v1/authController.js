@@ -264,19 +264,28 @@ let auth_controller = {
 
             const totalCount = await Customer.countDocuments(query);
             const customerIds = customers.map(customer => customer._id);
-            const lastBills = await Bill.aggregate([
-                { $match: { customerId: { $in: customerIds } } },
-                { $sort: { customerId: 1, createdAt: -1 } },
+
+            const billAggregation = await Bill.aggregate([
+                { $match: { customerId: { $in: customerIds }, isDeleted: false } },
                 {
                     $group: {
                         _id: '$customerId',
-                        lastBillId: { $first: '$_id' }
+                        lastBillId: { $first: '$_id' },
+                        totalSpent: { $sum: '$billAmount' },
+                        totalRefund: { $sum: '$refundAmount' },
+                        lastBillDate: { $max: '$createdAt' }
                     }
-                }
+                },
+                { $sort: { lastBillDate: -1 } }
             ]);
-            const billMap = new Map();
-            lastBills.forEach(bill => {
-                billMap.set(bill._id.toString(), bill.lastBillId);
+
+            const billDataMap = new Map();
+            billAggregation.forEach(bill => {
+                billDataMap.set(bill._id.toString(), {
+                    lastBillId: bill.lastBillId,
+                    totalSpent: bill.totalSpent,
+                    totalRefund: bill.totalRefund
+                });
             });
 
             const totalPages = Math.ceil(totalCount / limit);
@@ -284,24 +293,34 @@ let auth_controller = {
                 totalCount,
                 totalPages,
                 currentPage: page,
-                users: customers.map(customer => ({
-                    id: customer._id,
-                    name: customer.name,
-                    phone: customer.phone,
-                    email: customer.email,
-                    profileImage: customer.profileImage,
-                    instaId: customer.instaId,
-                    instaDetails: customer.instaDetails,
-                    upiId: customer.upiId,
-                    category: customer.category,
-                    isVerified: customer.isVerified,
-                    isActive: customer.isActive,
-                    isLocked: customer.isLocked,
-                    lastActive: customer.lastActive,
-                    lastBillId: billMap.get(customer._id.toString()) || null,
-                    createdAt: customer.createdAt,
-                    updatedAt: customer.updatedAt
-                }))
+                users: customers.map(customer => {
+                    const billData = billDataMap.get(customer._id.toString()) || {
+                        lastBillId: null,
+                        totalSpent: 0,
+                        totalRefund: 0
+                    };
+
+                    return {
+                        id: customer._id,
+                        name: customer.name,
+                        phone: customer.phone,
+                        email: customer.email,
+                        profileImage: customer.profileImage,
+                        instaId: customer.instaId,
+                        instaDetails: customer.instaDetails,
+                        upiId: customer.upiId,
+                        category: customer.category,
+                        isVerified: customer.isVerified,
+                        isActive: customer.isActive,
+                        isLocked: customer.isLocked,
+                        lastActive: customer.lastActive,
+                        lastBillId: billData.lastBillId,
+                        totalSpent: billData.totalSpent,
+                        totalRefund: billData.totalRefund,
+                        createdAt: customer.createdAt,
+                        updatedAt: customer.updatedAt
+                    };
+                })
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
@@ -834,7 +853,47 @@ let auth_controller = {
             console.error("Error fetching dashboard data:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch_dashboard", components: {} });
         }
-    }
-};
+    },
 
+    get_red_flagged_users: async (req, res) => {
+        try {
+            const redFlaggedUsers = await Customer.aggregate([
+                {
+                    $group: {
+                        _id: "$instaId",
+                        customers: { $push: "$$ROOT" },
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $match: {
+                        count: { $gt: 1 } // ✅ Only instaId that appears more than once
+                    }
+                },
+                {
+                    $unwind: "$customers" // flatten back to individual documents
+                },
+                {
+                    $replaceRoot: { newRoot: "$customers" } // return full customer document
+                }
+            ]);
+
+            return sendResponse(
+                req,
+                res,
+                200,
+                1,
+                { keyword: "success" },
+                { users: redFlaggedUsers }
+            );
+        } catch (err) {
+            console.error("Error fetching red-flagged users:", err);
+            return sendResponse(req, res, 500, 0, {
+                keyword: "failed_to_fetch_red_flagged_users",
+                components: {}
+            });
+        }
+    },
+
+};
 module.exports = auth_controller;

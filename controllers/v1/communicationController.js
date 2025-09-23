@@ -2,26 +2,22 @@ const Communication = require('../../models/v1/Communication');
 const { sendResponse } = require('../../middleware');
 
 let communication_controller = {
-    create_communication: async (req, res) => {
-        const { brandId, adminId, subject, type, priority, message, senderType, senderName, messageType, attachments } = req.body;
+    createCommunicationByBrand: async (req, res) => {
+        const { brandId, subject, type, priority, message, messageType, attachments } = req.body;
         try {
-            const ticketId = 'COMM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
             const newCommunication = new Communication({
                 brandId,
-                adminId,
+                isAllBrands: false,
                 subject,
-                ticketId,
                 type: type || 'general',
                 priority: priority || 'medium',
-                status: 'open',
+                status: 'pending_admin',
                 messages: [{
-                    senderId: senderType === 'newBrand' ? brandId : adminId,
-                    senderType,
-                    senderName,
+                    senderId: brandId,
+                    senderType: 'newBrand',
                     message,
                     messageType: messageType || 'text',
-                    attachments: attachments || []
+                    attachments: attachments
                 }]
             });
 
@@ -31,7 +27,15 @@ let communication_controller = {
                 return sendResponse(req, res, 200, 0, { keyword: "failed_to_create_communication", components: {} });
             }
 
-            return sendResponse(req, res, 200, 1, { keyword: "communication_created", components: { ticketId: result.ticketId, id: result._id } });
+            return sendResponse(req, res, 200, 1, { 
+                keyword: "communication_created", 
+                components: { 
+                    id: result._id,
+                    brandId: result.brandId,
+                    brandIds: result.brandIds,
+                    isAllBrands: result.isAllBrands
+                } 
+            });
         } catch (err) {
             console.error("Error creating communication:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_create_communication", components: {} });
@@ -39,7 +43,7 @@ let communication_controller = {
     },
 
     add_message: async (req, res) => {
-        const { communicationId, senderId, senderType, senderName, message, messageType, attachments } = req.body;
+        const { communicationId, senderId, senderType, message, messageType, attachments } = req.body;
         try {
             const existingCommunication = await Communication.findById(communicationId);
 
@@ -47,13 +51,21 @@ let communication_controller = {
                 return sendResponse(req, res, 200, 0, { keyword: "communication_not_found", components: {} });
             }
 
+            let parsedAttachments = [];
+            if (attachments) {
+                try {
+                    parsedAttachments = typeof attachments === 'string' ? JSON.parse(attachments) : attachments;
+                } catch (e) {
+                    parsedAttachments = [];
+                }
+            }
+
             const newMessage = {
                 senderId,
                 senderType,
-                senderName,
                 message,
                 messageType: messageType || 'text',
-                attachments: attachments || []
+                attachments: parsedAttachments || []
             };
 
             await Communication.findByIdAndUpdate(communicationId, {
@@ -183,8 +195,8 @@ let communication_controller = {
         const { communicationId } = req.params;
         try {
             const communication = await Communication.findById(communicationId)
-                .populate('brandId', 'name email')
-                .populate('adminId', 'name email')
+                .populate('brandId', 'brandname email')
+                .populate('brandIds', 'brandname email')
                 .populate('messages.senderId');
 
             if (!communication) {
@@ -199,26 +211,31 @@ let communication_controller = {
     },
 
     list_communications: async (req, res) => {
-        const { page = 1, limit = 10, brandId, adminId, status, type, priority, search } = req.query;
+        const { page = 1, limit = 10, brandId, status, type, priority, search } = req.body;
         try {
             const skip = (page - 1) * limit;
             let query = {};
 
-            if (brandId) query.brandId = brandId;
-            if (adminId) query.adminId = adminId;
+            if (brandId) {
+                query.$or = [
+                    { brandId: brandId },
+                    { brandIds: brandId },
+                    { isAllBrands: true }
+                ];
+            }
             if (status) query.status = status;
             if (type) query.type = type;
             if (priority) query.priority = priority;
             if (search) {
                 query.$or = [
-                    { subject: { $regex: search, $options: 'i' } },
-                    { ticketId: { $regex: search, $options: 'i' } }
+                    ...(query.$or || []),
+                    { subject: { $regex: search, $options: 'i' } }
                 ];
             }
 
             const communications = await Communication.find(query)
-                .populate('brandId', 'name email')
-                .populate('adminId', 'name email')
+                .populate('brandId', 'brandname email')
+                .populate('brandIds', 'brandname email')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ updatedAt: -1 });
@@ -241,18 +258,24 @@ let communication_controller = {
     },
 
     list_brand_communications: async (req, res) => {
-        const { brandId } = req.params;
-        const { page = 1, limit = 10, status, type, priority } = req.query;
+        const { brandId, page = 1, limit = 10, status, type, priority } = req.body;
         try {
             const skip = (page - 1) * limit;
-            let query = { brandId };
+            let query = {
+                $or: [
+                    { brandId: brandId },
+                    { brandIds: brandId },
+                    { isAllBrands: true }
+                ]
+            };
 
             if (status) query.status = status;
             if (type) query.type = type;
             if (priority) query.priority = priority;
 
-            const communications = await Communication.find(query)
-                .populate('adminId', 'name email')
+            const communications = await Communication.find()
+                .populate('brandId', 'brandname email')
+                .populate('brandIds', 'brandname email')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ updatedAt: -1 });
@@ -275,18 +298,18 @@ let communication_controller = {
     },
 
     list_admin_communications: async (req, res) => {
-        const { adminId } = req.params;
-        const { page = 1, limit = 10, status, type, priority } = req.query;
+        const { page = 1, limit = 10, status, type, priority } = req.body;
         try {
             const skip = (page - 1) * limit;
-            let query = { adminId };
+            let query = {};
 
             if (status) query.status = status;
             if (type) query.type = type;
             if (priority) query.priority = priority;
 
             const communications = await Communication.find(query)
-                .populate('brandId', 'name email')
+                .populate('brandId', 'brandname email')
+                .populate('brandIds', 'brandname email')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ updatedAt: -1 });
@@ -309,16 +332,21 @@ let communication_controller = {
     },
 
     get_unread_count: async (req, res) => {
-        const { userId, userType } = req.params;
+        const { userId, userType } = req.body;
         try {
             let query = {};
             let matchCondition = {};
 
             if (userType === 'brand') {
-                query.brandId = userId;
+                query = {
+                    $or: [
+                        { brandId: userId },
+                        { brandIds: userId },
+                        { isAllBrands: true }
+                    ]
+                };
                 matchCondition = { 'messages.senderType': 'tagcashAdmins', 'messages.isRead': false };
             } else if (userType === 'admin') {
-                query.adminId = userId;
                 matchCondition = { 'messages.senderType': 'newBrand', 'messages.isRead': false };
             } else {
                 return sendResponse(req, res, 200, 0, { keyword: "invalid_user_type", components: {} });
@@ -341,7 +369,7 @@ let communication_controller = {
     },
 
     get_statistics: async (req, res) => {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate } = req.body;
         try {
             let matchQuery = {};
             
@@ -365,7 +393,9 @@ let communication_controller = {
                         urgentTickets: { $sum: { $cond: [{ $eq: ['$priority', 'urgent'] }, 1, 0] } },
                         highTickets: { $sum: { $cond: [{ $eq: ['$priority', 'high'] }, 1, 0] } },
                         mediumTickets: { $sum: { $cond: [{ $eq: ['$priority', 'medium'] }, 1, 0] } },
-                        lowTickets: { $sum: { $cond: [{ $eq: ['$priority', 'low'] }, 1, 0] } }
+                        lowTickets: { $sum: { $cond: [{ $eq: ['$priority', 'low'] }, 1, 0] } },
+                        allBrandsCommunications: { $sum: { $cond: [{ $eq: ['$isAllBrands', true] }, 1, 0] } },
+                        specificBrandsCommunications: { $sum: { $cond: [{ $eq: ['$isAllBrands', false] }, 1, 0] } }
                     }
                 }
             ]);
@@ -390,7 +420,9 @@ let communication_controller = {
                     urgentTickets: 0,
                     highTickets: 0,
                     mediumTickets: 0,
-                    lowTickets: 0
+                    lowTickets: 0,
+                    allBrandsCommunications: 0,
+                    specificBrandsCommunications: 0
                 },
                 typeBreakdown: typeStats
             };
@@ -403,7 +435,7 @@ let communication_controller = {
     },
 
     search_communications: async (req, res) => {
-        const { query: searchQuery, page = 1, limit = 10 } = req.query;
+        const { query: searchQuery, page = 1, limit = 10 } = req.body;
         try {
             if (!searchQuery) {
                 return sendResponse(req, res, 200, 0, { keyword: "search_query_required", components: {} });
@@ -415,12 +447,11 @@ let communication_controller = {
             const communications = await Communication.find({
                 $or: [
                     { subject: searchRegex },
-                    { ticketId: searchRegex },
                     { 'messages.message': searchRegex }
                 ]
             })
-                .populate('brandId', 'name email')
-                .populate('adminId', 'name email')
+                .populate('brandId', 'brandname email')
+                .populate('brandIds', 'brandname email')
                 .skip(skip)
                 .limit(parseInt(limit))
                 .sort({ updatedAt: -1 });
@@ -428,7 +459,6 @@ let communication_controller = {
             const totalCount = await Communication.countDocuments({
                 $or: [
                     { subject: searchRegex },
-                    { ticketId: searchRegex },
                     { 'messages.message': searchRegex }
                 ]
             });
@@ -446,6 +476,66 @@ let communication_controller = {
         } catch (err) {
             console.error("Error searching communications:", err);
             return sendResponse(req, res, 500, 0, { keyword: "failed_to_search_communications", components: {} });
+        }
+    },
+
+    createCommunicationByAdmin: async (req, res) => {
+        const { brandIds, subject, type, priority, message, messageType, attachments } = req.body;
+        try {
+            let parsedAttachments = attachments || '';
+
+            const createdCommunications = [];
+            const errors = [];
+
+            for (const brandId of brandIds) {
+                try {
+                    const newCommunication = new Communication({
+                        brandId,
+                        brandIds: [brandId],
+                        isAllBrands: false,
+                        subject,
+                        type: type || 'general',
+                        priority: priority || 'medium',
+                        status: 'pending_brand',
+                        messages: [{
+                            senderId: null,
+                            senderType: 'tagcashAdmins',
+                            message,
+                            messageType: messageType || 'text',
+                            attachments: parsedAttachments
+                        }]
+                    });
+
+                    const result = await newCommunication.save();
+                    createdCommunications.push({
+                        brandId,
+                        communicationId: result._id
+                    });
+                } catch (error) {
+                    console.error(`Error creating communication for brand ${brandId}:`, error);
+                    errors.push({
+                        brandId,
+                        error: error.message
+                    });
+                }
+            }
+
+            if (createdCommunications.length === 0) {
+                return sendResponse(req, res, 200, 0, { keyword: "failed_to_create_any_communications", components: { errors } });
+            }
+
+            return sendResponse(req, res, 200, 1, { 
+                keyword: "bulk_communications_created", 
+                components: { 
+                    successCount: createdCommunications.length,
+                    errorCount: errors.length,
+                    createdCommunications,
+                    errors
+                } 
+            });
+        } catch (err) {
+            console.error("Error creating bulk communications:", err);
+            return sendResponse(req, res, 500, 0, { keyword: "failed_to_create_bulk_communications", components: {} });
         }
     }
 };

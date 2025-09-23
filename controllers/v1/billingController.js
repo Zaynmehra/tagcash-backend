@@ -822,7 +822,7 @@ let billing_controller = {
 
 
     upload_content: async (req, res) => {
-        const { billingId, uploadContent, contentType, selectedOffer, selectedOfferType } = req.body;
+        const { billingId, uploadContent, contentType, selectedOffer, selectedOfferType, brandId } = req.body;
         const { id } = req.loginUser;
 
         try {
@@ -893,7 +893,7 @@ let billing_controller = {
                     }
 
                     if (applicableRange) {
-                        refundAmount = Math.min(billAmount, applicableRange.amount);
+                        refundAmount = Math.min(existingBill?.billAmount, applicableRange?.amount);
                         updateFields.refundAmount = refundAmount;
                     }
                 }

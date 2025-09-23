@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { checkApiKey, decryption, validateJoi, checkToken } = require('../../middleware');
+const { checkApiKey, decryption, validateJoi, checkToken, checkTokenCustomer } = require('../../middleware');
 const requestedBrandController = require('../../controllers/v1/requestedBrandController');
 const Joi = require('joi');
 
-router.post("/createRequestedBrand", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+router.post("/createRequestedBrand", checkApiKey, checkTokenCustomer, decryption, validateJoi(Joi.object({
   customerId: Joi.string().required(),
   brandName: Joi.string().required().trim().max(200),
   remark: Joi.string().allow(null, '').optional().trim(),

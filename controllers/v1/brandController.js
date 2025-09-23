@@ -1,6 +1,7 @@
 const Brand = require('../../models/v1/Brand');
 const Bill = require('../../models/v1/Bill');
 const Customer = require('../../models/v1/Customer');
+const Challenges = require('../../models/v1/Challenge');
 const { sendResponse } = require('../../middleware');
 const common = require('../../utils/common');
 const moment = require('moment');
@@ -200,15 +201,80 @@ let brand_controller = {
         }
     },
 
-    brand_details: async (req, res) => {
-        try {
-            let { admin_id } = req.loginUser;
-            let user = await Brand.findById(admin_id);
-            return sendResponse(req, res, 200, 1, { keyword: "success" }, user);
-        } catch (err) {
-            return sendResponse(req, res, 200, 0, { keyword: err.message || "failed_to_fetch" });
+    brand_details : async (req, res) => {
+    try {
+        let { admin_id } = req.loginUser;
+        let user = await Brand.findById(admin_id);
+        
+        if (!user) {
+            return sendResponse(req, res, 404, 0, { keyword: "brand_not_found" });
         }
-    },
+
+        const currentDate = new Date();
+        const lastWeekDate = new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+        const [
+            activeOffers,
+            activeChallenges,
+            lastWeekCustomers,
+            totalImpressions
+        ] = await Promise.all([
+            Offers.countDocuments({
+                brandId: admin_id,
+                status: 'active',
+                isDeleted: false,
+                startDate: { $lte: currentDate },
+                endDate: { $gte: currentDate }
+            }),
+            
+            Challenges.countDocuments({
+                brandId: admin_id,
+                status: 'active',
+                isDeleted: false,
+                startDate: { $lte: currentDate },
+                endDate: { $gte: currentDate }
+            }),
+            
+            Customer.countDocuments({
+                createdAt: { $gte: lastWeekDate },
+                isDeleted: { $ne: true }
+            }),
+            
+            Bill.aggregate([
+                {
+                    $match: {
+                        brandId: new mongoose.Types.ObjectId(admin_id),
+                        isDeleted: false
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalViews: { $sum: "$views" }
+                    }
+                }
+            ])
+        ]);
+
+        const impressions = totalImpressions.length > 0 ? totalImpressions[0].totalViews : 0;
+        const ongoingCampaigns = activeOffers + activeChallenges;
+
+        const brandDetails = {
+            ...user.toObject(),
+            analytics: {
+                ongoingCampaigns,
+                activeOffers,
+                activeChallenges,
+                lastWeekCustomers,
+                impressions
+            }
+        };
+
+        return sendResponse(req, res, 200, 1, { keyword: "success" }, brandDetails);
+    } catch (err) {
+        return sendResponse(req, res, 200, 0, { keyword: err.message || "failed_to_fetch" });
+    }
+},
 
     send_otp_brand: async (req, res) => {
         try {
@@ -295,7 +361,7 @@ let brand_controller = {
     },
 
     list_brand: async (req, res) => {
-        const { page = 1, limit = 10, search, isActive, isLocked } = req.body;
+        const { page = 1, limit = 10, search, isActive, isLocked, paymentType } = req.body;
         const skip = (page - 1) * limit;
         try {
             let query = { isDeleted: false };
@@ -314,6 +380,7 @@ let brand_controller = {
 
             if (typeof isActive !== 'undefined') query.isActive = isActive;
             if (typeof isLocked !== 'undefined') query.isLocked = isLocked;
+            if (typeof paymentType !== 'undefined') query.paymentType = paymentType;
 
             const brands = await Brand.find(query)
                 .skip(skip)
@@ -597,77 +664,87 @@ let brand_controller = {
 
 
     get_brands: async (req, res) => {
-        const { page = 1, limit = 10, search, isActive = true } = req.body;
-        const skip = (page - 1) * limit;
+    const { page = 1, limit = 10, search, isActive = true } = req.body;
+    const skip = (page - 1) * limit;
 
-        try {
-            let query = {
-                isDeleted: false,
-                about: { $exists: true, $ne: null, $ne: '' },
-                posterImages: { $exists: true, $not: { $size: 0 } },
-                carouselImages: { $exists: true, $ne: null },
-                paymentType: { $exists: true, $ne: null, $ne: '' },
-                rateOfTwo: { $exists: true, $ne: null },
-                address: { $exists: true, $ne: null }
-            };
-            query.$and = [
-                {
-                    $or: [
-                        { 'carouselImages.desktop': { $exists: true, $not: { $size: 0 } } },
-                        { 'carouselImages.mobile': { $exists: true, $not: { $size: 0 } } }
-                    ]
-                }
-            ];
-
-            if (search) {
-                query.$or = [
-                    { brandname: { $regex: search, $options: 'i' } },
-                    { managername: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } }
-                ];
+    try {
+        let query = {
+            isDeleted: false,
+            about: { $exists: true, $ne: null, $ne: '' },
+            posterImages: { $exists: true, $not: { $size: 0 } },
+            carouselImages: { $exists: true, $ne: null },
+            paymentType: { $exists: true, $ne: null, $ne: '' },
+            rateOfTwo: { $exists: true, $ne: null },
+            address: { $exists: true, $ne: null }
+        };
+        
+        query.$and = [
+            {
+                $or: [
+                    { 'carouselImages.desktop': { $exists: true, $not: { $size: 0 } } },
+                    { 'carouselImages.mobile': { $exists: true, $not: { $size: 0 } } }
+                ]
+            },
+            {
+                $or: [
+                    { paymentType: 'Escrow' },
+                    { 
+                        paymentType: 'Prepaid',
+                        balance: { $gte: 3000 }
+                    }
+                ]
             }
+        ];
 
-            if (typeof isActive !== 'undefined') query.isActive = isActive;
-
-            const brands = await Brand.find(query)
-                .select('brandname about averageRating totalReviews brandlogo carouselImages posterImages category subcategory isVerified paymentType rateOfTwo address')
-                .skip(skip)
-                .limit(parseInt(limit))
-                .sort({ createdAt: -1 });
-
-            const totalCount = await Brand.countDocuments(query);
-            const totalPages = Math.ceil(totalCount / limit);
-
-            const response = {
-                totalCount,
-                totalPages,
-                currentPage: page,
-                brands: brands.map(brand => ({
-                    id: brand._id,
-                    brandname: brand.brandname,
-                    about: brand.about,
-                    averageRating: brand.averageRating,
-                    totalReviews: brand.totalReviews,
-                    brandlogo: brand.brandlogo,
-                    carouselImages: brand.carouselImages,
-                    posterImages: brand.posterImages,
-                    mustTryItems: brand.mustTryItems,
-                    category: brand.category,
-                    subcategory: brand.subcategory,
-                    isVerified: brand.isVerified,
-                    paymentType: brand.paymentType,
-                    rateOfTwo: brand.rateOfTwo,
-                    address: brand.address,
-                    createdAt: brand.createdAt
-                }))
-            };
-
-            return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
-        } catch (err) {
-            console.error("Error fetching brands:", err);
-            return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+        if (search) {
+            query.$or = [
+                { brandname: { $regex: search, $options: 'i' } },
+                { managername: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } }
+            ];
         }
-    },
+
+        if (typeof isActive !== 'undefined') query.isActive = isActive;
+
+        const brands = await Brand.find(query)
+            .select('brandname about averageRating totalReviews brandlogo carouselImages posterImages category subcategory isVerified paymentType rateOfTwo address balance')
+            .skip(skip)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 });
+
+        const totalCount = await Brand.countDocuments(query);
+        const totalPages = Math.ceil(totalCount / limit);
+
+        const response = {
+            totalCount,
+            totalPages,
+            currentPage: page,
+            brands: brands.map(brand => ({
+                id: brand._id,
+                brandname: brand.brandname,
+                about: brand.about,
+                averageRating: brand.averageRating,
+                totalReviews: brand.totalReviews,
+                brandlogo: brand.brandlogo,
+                carouselImages: brand.carouselImages,
+                posterImages: brand.posterImages,
+                mustTryItems: brand.mustTryItems,
+                category: brand.category,
+                subcategory: brand.subcategory,
+                isVerified: brand.isVerified,
+                paymentType: brand.paymentType,
+                rateOfTwo: brand.rateOfTwo,
+                address: brand.address,
+                createdAt: brand.createdAt
+            }))
+        };
+
+        return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
+    } catch (err) {
+        console.error("Error fetching brands:", err);
+        return sendResponse(req, res, 500, 0, { keyword: "failed_to_fetch", components: {} });
+    }
+},
 
     add_brand: async (req, res) => {
         const { brandname, phone, email, brandlogo, managername, category, subcategory, brandurl } = req.body;
@@ -748,6 +825,7 @@ let brand_controller = {
             if (req.body.brandlogo) updateFields.brandlogo = req.body.brandlogo;
             if (req.body.brandurl) updateFields.brandurl = req.body.brandurl;
             if (req.body.website) updateFields.website = req.body.website;
+            if (req.body.monthlyBudget) updateFields.monthlyBudget = req.body.monthlyBudget;
             if (req.body.about) updateFields.about = req.body.about;
             if (req.body.address && Array.isArray(req.body.address) && req.body.address.length > 0) {
                 if (req.body.address) updateFields['address'] = req.body.address;
@@ -1009,7 +1087,8 @@ let brand_controller = {
                 totalCampaigns: brandData?.totalCampaigns || 0,
                 totalInfluencers: brandData?.totalInfluencers || 0,
                 totalAddedBalance: brandData?.totalAddedBalance || brandData?.balance,
-                isBrandListed: brandData?.posterImages.length > 0 ? true : false
+                isBrandListed: brandData?.posterImages.length > 0 ? true : false,
+                monthlyBudget: brandData?.monthlyBudget || 0,
             };
 
             return sendResponse(req, res, 200, 1, { keyword: "success" }, response);
@@ -1595,7 +1674,10 @@ let brand_controller = {
                     memberType: bill.customerId.instaDetails?.memberType || 'Starter Member',
                     isActive: bill.customerId.isActive,
                     isVerified: bill.customerId.isVerified,
-                    createdAt: bill.customerId.createdAt
+                    createdAt: bill.customerId.createdAt,
+                    avgViews: bill.customerId.instaDetails?.avgViews,
+                    avgLikes: bill.customerId.instaDetails?.avgLikes,
+                    avgComments: bill.customerId.instaDetails?.avgComments,
                 }
             }));
 

@@ -1,16 +1,19 @@
 const mongoose = require('mongoose');
 
 const communication = new mongoose.Schema({
-    brandId: {
+    brandIds: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'newBrand',
-        required: [true, 'Brand ID is required']
+        ref: 'newBrand'
+    }],
+
+    isAllBrands: {
+        type: Boolean,
+        default: false
     },
 
-    adminId: {
+    brandId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'tagcashAdmins',
-        required: [true, 'Admin ID is required']
+        ref: 'newBrand'
     },
 
     subject: {
@@ -18,13 +21,6 @@ const communication = new mongoose.Schema({
         required: [true, 'Subject is required'],
         trim: true,
         maxlength: 200
-    },
-
-    ticketId: {
-        type: String,
-        unique: true,
-        required: true,
-        trim: true
     },
 
     type: {
@@ -57,11 +53,6 @@ const communication = new mongoose.Schema({
             required: true,
             enum: ['newBrand', 'tagcashAdmins']
         },
-        senderName: {
-            type: String,
-            required: true,
-            trim: true
-        },
         message: {
             type: String,
             required: [true, 'Message content is required'],
@@ -73,23 +64,9 @@ const communication = new mongoose.Schema({
             enum: ['text', 'image', 'file', 'link'],
             default: 'text'
         },
-        attachments: [{
-            filename: {
-                type: String,
-                trim: true
-            },
-            fileUrl: {
-                type: String,
-                trim: true
-            },
-            fileType: {
-                type: String,
-                trim: true
-            },
-            fileSize: {
-                type: Number
-            }
-        }],
+        attachments: {
+            type: String,
+        },
         isRead: {
             type: Boolean,
             default: false
@@ -111,6 +88,12 @@ const communication = new mongoose.Schema({
     }],
 }, {
     timestamps: true
+});
+
+communication.pre('validate', function () {
+    if (!this.isAllBrands && (!this.brandIds || this.brandIds.length === 0) && !this.brandId) {
+        this.invalidate('brandIds', 'Either brandIds must be provided or isAllBrands must be true');
+    }
 });
 
 module.exports = mongoose.model('BrandAdminCommunication', communication);

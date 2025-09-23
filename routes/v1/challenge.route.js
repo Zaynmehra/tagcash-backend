@@ -94,7 +94,6 @@ router.post("/addChallenges", checkApiKey, checkTokenBrand, upload.fields([
   autoExpire: Joi.boolean().default(true)
 })), challengeController.add_challenges);
 
-// List Challenges
 router.post("/listChallenges", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   page: Joi.number().min(1).default(1).optional(),
   limit: Joi.number().min(1).max(100).default(10).optional(),
@@ -109,12 +108,10 @@ router.post("/listChallenges", checkApiKey, checkTokenBrand, decryption, validat
   endDateTo: Joi.date().optional().allow(null)
 })), challengeController.list_challenges);
 
-// Get Single Challenge
 router.get("/getChallenge/:challengeId", checkApiKey, checkTokenBrand, decryption, validateJoi(Joi.object({
   challengeId: Joi.string().required()
 }), 'params'), challengeController.get_challenge);
 
-// Update Challenge
 router.put("/updateChallenge/:challengeId", checkApiKey, checkTokenBrand, upload.fields([
   { name: 'images', maxCount: 10 },
   { name: 'bannerImage', maxCount: 1 }
@@ -185,5 +182,171 @@ router.put("/participationStatus/:challengeId/:participationId", checkApiKey, ch
   status: Joi.string().valid('submitted', 'under_review', 'approved', 'rejected', 'winner', 'rewarded').required(),
   notes: Joi.string().max(500).optional().allow('', null)
 })), challengeController.update_participation_status);
+
+//.       admin routes.   //
+
+
+
+router.post("/admin/createChallenge", checkApiKey, checkToken, upload.fields([
+  { name: 'images', maxCount: 10 },
+  { name: 'bannerImage', maxCount: 1 }
+]), uploadChallengeImages, decryption, validateJoi(Joi.object({
+  title: Joi.string().required().max(200),
+  description: Joi.string().required().max(1000),
+  shortDescription: Joi.string().optional().max(150).allow('', null),
+  brandId: Joi.string().required(),
+  brandName: Joi.string().required(),
+  link: Joi.string().optional().allow('', null),
+  startDate: Joi.date().required(),
+  endDate: Joi.date().required(),
+  targetAudience: Joi.string().valid('all', 'verified_only', 'new_customers', 'returning_customers', 'specific_customers', 'followers_range').default('all'),
+  verifiedCustomersOnly: Joi.boolean().default(false),
+  specificCustomers: Joi.array().items(Joi.string()).optional(),
+  minFollowersRequired: Joi.number().min(0).default(0),
+  maxFollowersAllowed: Joi.number().min(0).optional().allow(null),
+  targetCategories: Joi.array().items(Joi.string()).optional(),
+  targetLocations: Joi.array().items(Joi.object({
+    city: Joi.string().optional(),
+    state: Joi.string().optional(),
+    country: Joi.string().optional()
+  })).optional(),
+  reward: Joi.number().min(0).required(),
+  rewardType: Joi.string().valid('fixed_amount', 'percentage', 'free_product', 'discount_code').default('fixed_amount'),
+  totalParticipationLimit: Joi.number().min(1).optional(),
+  perCustomerLimit: Joi.number().min(1).default(1),
+  requirements: Joi.array().items(Joi.string().max(300)).optional(),
+  submissionGuidelines: Joi.string().max(1000).optional().allow('', null),
+  socialMediaRequirements: Joi.object({
+    requireInstagramPost: Joi.boolean().default(false),
+    requireStoryMention: Joi.boolean().default(false),
+    requireBrandTag: Joi.boolean().default(false),
+    requiredHashtags: Joi.array().items(Joi.string()).optional(),
+    minimumViews: Joi.number().min(0).default(0),
+    minimumLikes: Joi.number().min(0).default(0)
+  }).optional(),
+  status: Joi.string().valid('draft', 'active', 'paused', 'completed', 'cancelled').default('active'),
+  isActive: Joi.boolean().default(true),
+  priority: Joi.number().min(1).max(10).default(5),
+  isFeatured: Joi.boolean().default(false),
+  autoExpire: Joi.boolean().default(true),
+  approvalStatus: Joi.string().valid('pending', 'approved', 'rejected').default('approved')
+})), challengeController.admin_create_challenge);
+
+router.put("/admin/updateChallenge/:challengeId", checkApiKey, checkToken, upload.fields([
+  { name: 'images', maxCount: 10 },
+  { name: 'bannerImage', maxCount: 1 }
+]), uploadChallengeImages, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), validateJoi(Joi.object({
+  title: Joi.string().optional().max(200),
+  description: Joi.string().optional().max(1000),
+  shortDescription: Joi.string().optional().max(150).allow('', null),
+  brandId: Joi.string().optional(),
+  brandName: Joi.string().optional(),
+  link: Joi.string().optional().allow('', null),
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().optional(),
+  targetAudience: Joi.string().valid('all', 'verified_only', 'new_customers', 'returning_customers', 'specific_customers', 'followers_range').optional(),
+  verifiedCustomersOnly: Joi.boolean().optional(),
+  specificCustomers: Joi.array().items(Joi.string()).optional(),
+  minFollowersRequired: Joi.number().min(0).optional(),
+  maxFollowersAllowed: Joi.number().min(0).optional().allow(null),
+  targetCategories: Joi.array().items(Joi.string()).optional(),
+  targetLocations: Joi.array().items(Joi.object({
+    city: Joi.string().optional(),
+    state: Joi.string().optional(),
+    country: Joi.string().optional()
+  })).optional(),
+  reward: Joi.number().min(0).optional(),
+  rewardType: Joi.string().valid('fixed_amount', 'percentage', 'free_product', 'discount_code').optional(),
+  totalParticipationLimit: Joi.number().min(1).optional(),
+  perCustomerLimit: Joi.number().min(1).optional(),
+  requirements: Joi.array().items(Joi.string().max(300)).optional(),
+  submissionGuidelines: Joi.string().max(1000).optional().allow('', null),
+  socialMediaRequirements: Joi.object({
+    requireInstagramPost: Joi.boolean().optional(),
+    requireStoryMention: Joi.boolean().optional(),
+    requireBrandTag: Joi.boolean().optional(),
+    requiredHashtags: Joi.array().items(Joi.string()).optional(),
+    minimumViews: Joi.number().min(0).optional(),
+    minimumLikes: Joi.number().min(0).optional()
+  }).optional(),
+  status: Joi.string().valid('draft', 'active', 'paused', 'completed', 'cancelled').optional(),
+  isActive: Joi.boolean().optional(),
+  priority: Joi.number().min(1).max(10).optional(),
+  isFeatured: Joi.boolean().optional(),
+  autoExpire: Joi.boolean().optional(),
+  approvalStatus: Joi.string().valid('pending', 'approved', 'rejected').optional()
+})), challengeController.admin_update_challenge);
+
+router.post("/admin/listAllChallenges", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  page: Joi.number().min(1).default(1).optional(),
+  limit: Joi.number().min(1).max(100).default(10).optional(),
+  search: Joi.string().optional().allow('', null),
+  isActive: Joi.boolean().optional().allow(null),
+  status: Joi.string().valid('draft', 'active', 'paused', 'completed', 'cancelled').optional().allow('', null),
+  targetAudience: Joi.string().valid('all', 'verified_only', 'new_customers', 'returning_customers', 'specific_customers', 'followers_range').optional().allow('', null),
+  brandName: Joi.string().optional().allow('', null),
+  startDateFrom: Joi.date().optional().allow(null),
+  startDateTo: Joi.date().optional().allow(null),
+  endDateFrom: Joi.date().optional().allow(null),
+  endDateTo: Joi.date().optional().allow(null),
+  approvalStatus: Joi.string().valid('pending', 'approved', 'rejected').optional().allow('', null),
+  priority: Joi.number().min(1).max(10).optional().allow(null),
+  isFeatured: Joi.boolean().optional().allow(null)
+})), challengeController.admin_list_all_challenges);
+
+router.get("/admin/getChallengeDetails/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), challengeController.admin_get_challenge_details);
+
+router.put("/admin/approveChallenge/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), validateJoi(Joi.object({
+  approvalStatus: Joi.string().valid('pending', 'approved', 'rejected').required(),
+  approvalNotes: Joi.string().max(500).optional().allow('', null)
+})), challengeController.admin_approve_challenge);
+
+router.put("/admin/updateChallengePriority/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), validateJoi(Joi.object({
+  priority: Joi.number().min(1).max(10).required()
+})), challengeController.admin_update_challenge_priority);
+
+router.put("/admin/toggleFeatured/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), validateJoi(Joi.object({
+  isFeatured: Joi.boolean().required()
+})), challengeController.admin_toggle_featured);
+
+router.put("/admin/deactivateChallenge/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), validateJoi(Joi.object({
+  reason: Joi.string().max(500).optional().allow('', null)
+})), challengeController.admin_deactivate_challenge);
+
+router.delete("/admin/forceDeleteChallenge/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), challengeController.admin_force_delete_challenge);
+
+router.get("/admin/getChallengeAnalytics/:challengeId", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeId: Joi.string().required()
+}), 'params'), challengeController.admin_get_challenge_analytics);
+
+
+router.get("/admin/getDashboardStats", checkApiKey, checkToken, decryption, challengeController.admin_get_dashboard_stats);
+
+
+router.put("/admin/bulkUpdateChallenges", checkApiKey, checkToken, decryption, validateJoi(Joi.object({
+  challengeIds: Joi.array().items(Joi.string()).min(1).required(),
+  updateData: Joi.object({
+    status: Joi.string().valid('draft', 'active', 'paused', 'completed', 'cancelled').optional(),
+    isActive: Joi.boolean().optional(),
+    priority: Joi.number().min(1).max(10).optional(),
+    isFeatured: Joi.boolean().optional(),
+    approvalStatus: Joi.string().valid('pending', 'approved', 'rejected').optional()
+  }).min(1).required()
+})), challengeController.admin_bulk_update_challenges);
+
 
 module.exports = router;

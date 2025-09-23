@@ -96,4 +96,7 @@ router.post("/dashboard", checkApiKey, checkToken, decryption, validateJoi(Joi.o
   endDate: Joi.string().allow(null, '').optional(),
 })), authController.dashboard);
 
+router.get("/getRedFlaggedUsers", checkApiKey, checkToken, decryption, authController.get_red_flagged_users);
+
+
 module.exports = router;
